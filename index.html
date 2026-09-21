@@ -1,0 +1,1317 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cuaderno técnico · Apuntes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     1. TOKENS — paleta, tipografía y unidades base del sistema
+     ============================================================ */
+  :root{
+    --ink:        #1C2430;  /* texto principal */
+    --ink-soft:   #57626F;  /* texto secundario */
+    --paper:      #EEF1ED;  /* fondo general, tipo papel cuadriculado frío */
+    --paper-raised:#FFFFFF; /* superficie de tarjetas y paneles */
+    --line:       #C7CFC6;  /* bordes marcados */
+    --line-soft:  #DEE3DB;  /* bordes suaves / cuadrícula */
+    --amber:      #DA9A32;  /* acento primario — marcador resaltador */
+    --amber-ink:  #6E4611;
+    --teal:       #2F7A6B;  /* acento categoría A / enlaces */
+    --rust:       #B24F2C;  /* acento categoría B / eliminar */
+    --navy:       #35507D;  /* acento categoría C */
+    --plum:       #6B4A7A;  /* acento categoría D */
+    --grid-line:  rgba(28,36,48,.035);
+    --code-bg:    #1C2430; /* fijo: los bloques de código se mantienen oscuros en ambos temas */
+    --code-text:  #E8EAE6;
+    --font-body:  'IBM Plex Sans', system-ui, sans-serif;
+    --font-mono:  'IBM Plex Mono', 'SFMono-Regular', monospace;
+    --radius:     4px;
+  }
+
+  /* Tema oscuro: sigue la preferencia del visor, con anulación manual
+     posible vía data-theme (lo controla el visor de artifacts). */
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ink:        #E7EAE3;
+      --ink-soft:   #9FAAA1;
+      --paper:      #13171A;
+      --paper-raised:#1B2024;
+      --line:       #333B37;
+      --line-soft:  #262C28;
+      --amber:      #E7B15C;
+      --amber-ink:  #3A2708;
+      --teal:       #5CAE9B;
+      --rust:       #DD8A62;
+      --navy:       #7C9BCF;
+      --plum:       #A688B8;
+      --grid-line:  rgba(255,255,255,.035);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ink:        #E7EAE3;
+    --ink-soft:   #9FAAA1;
+    --paper:      #13171A;
+    --paper-raised:#1B2024;
+    --line:       #333B37;
+    --line-soft:  #262C28;
+    --amber:      #E7B15C;
+    --amber-ink:  #3A2708;
+    --teal:       #5CAE9B;
+    --rust:       #DD8A62;
+    --navy:       #7C9BCF;
+    --plum:       #A688B8;
+    --grid-line:  rgba(255,255,255,.035);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    font-family:var(--font-body);
+    color:var(--ink);
+    background:
+      repeating-linear-gradient(0deg, var(--grid-line) 0 1px, transparent 1px 26px),
+      repeating-linear-gradient(90deg, var(--grid-line) 0 1px, transparent 1px 26px),
+      var(--paper);
+    -webkit-font-smoothing:antialiased;
+  }
+  button{ font-family:inherit; }
+  input,select,textarea{ font-family:inherit; font-size:14px; color:var(--ink); }
+  ::selection{ background:var(--amber); color:var(--ink); }
+  @media (prefers-reduced-motion:reduce){
+    *{ transition:none !important; animation:none !important; }
+  }
+
+  /* ============================================================
+     2. ESTRUCTURA GENERAL — cabecera / sidebar / grilla
+     ============================================================ */
+  .app{
+    display:grid;
+    grid-template-columns:220px 1fr;
+    grid-template-rows:auto 1fr;
+    grid-template-areas:
+      "header header"
+      "sidebar main";
+    min-height:100vh;
+  }
+
+  /* --- Cabecera --- */
+  header.top{
+    grid-area:header;
+    display:flex;
+    align-items:center;
+    gap:16px;
+    padding:14px 20px;
+    background:var(--paper-raised);
+    border-bottom:1px solid var(--line);
+  }
+  .brand{
+    display:flex; align-items:baseline; gap:8px;
+    white-space:nowrap;
+  }
+  .brand .mark{
+    font-family:var(--font-mono);
+    font-size:12px; font-weight:600;
+    letter-spacing:.02em;
+    color:var(--paper-raised);
+    background:var(--ink);
+    padding:3px 6px;
+    border-radius:2px;
+  }
+  .brand h1{
+    font-size:17px; font-weight:600; margin:0;
+  }
+  .searchbar{
+    flex:1;
+    display:flex; align-items:center; gap:8px;
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:0 10px;
+    max-width:480px;
+  }
+  .searchbar svg{ flex:none; opacity:.55; }
+  .searchbar input{
+    flex:1; border:none; background:transparent; outline:none;
+    padding:9px 4px; font-size:14px;
+  }
+  .btn{
+    display:inline-flex; align-items:center; gap:6px;
+    border:1px solid var(--ink);
+    background:var(--ink);
+    color:var(--paper-raised);
+    padding:9px 14px;
+    border-radius:var(--radius);
+    font-size:14px; font-weight:500;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .btn:hover{ background:#000; }
+  .btn.ghost{
+    background:transparent; color:var(--ink); border-color:var(--line);
+  }
+  .btn.ghost:hover{ border-color:var(--ink); }
+  .btn.danger{ background:var(--rust); border-color:var(--rust); }
+  .btn.danger:hover{ background:#9a3f21; }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; }
+
+  /* --- Sidebar de categorías --- */
+  aside.sidebar{
+    grid-area:sidebar;
+    background:var(--paper-raised);
+    border-right:1px solid var(--line);
+    padding:18px 14px;
+    overflow-y:auto;
+  }
+  .sidebar h2{
+    font-size:11px; text-transform:none; letter-spacing:.02em;
+    color:var(--ink-soft); margin:0 0 10px;
+    font-weight:600;
+  }
+  .cat-list{ list-style:none; margin:0 0 16px; padding:0; display:flex; flex-direction:column; gap:2px; }
+  .cat-item{
+    display:flex; align-items:center; gap:8px;
+    width:100%; border:none; background:transparent;
+    padding:7px 8px; border-radius:var(--radius);
+    font-size:14px; color:var(--ink); cursor:pointer;
+    text-align:left;
+  }
+  .cat-item:hover{ background:var(--paper); }
+  .cat-item.active{ background:var(--paper); font-weight:600; }
+  .cat-dot{ width:9px; height:9px; border-radius:50%; flex:none; }
+  .cat-item .count{ margin-left:auto; font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); }
+  .cat-row{ display:flex; align-items:stretch; gap:2px; }
+  .cat-row .cat-item{ flex:1; min-width:0; }
+  .cat-del{
+    flex:none; border:none; background:transparent; color:var(--ink-soft);
+    padding:0 8px; border-radius:var(--radius); cursor:pointer;
+  }
+  .cat-del:hover{ background:var(--paper); color:var(--rust); }
+  .add-cat{
+    display:flex; gap:6px; margin-top:6px;
+  }
+  .add-cat input{
+    flex:1; min-width:0; border:1px solid var(--line); border-radius:var(--radius);
+    padding:6px 8px; font-size:13px;
+  }
+  .add-cat button{
+    border:1px solid var(--line); background:var(--paper-raised); border-radius:var(--radius);
+    width:30px; cursor:pointer; font-size:15px; color:var(--ink);
+  }
+  .backup-box{ border-top:1px solid var(--line-soft); margin-top:14px; padding-top:14px; }
+  .backup-btn{ flex:1; font-size:12px; padding:6px 4px; cursor:pointer; }
+
+  /* --- Área principal / grilla de tarjetas --- */
+  main.content{
+    grid-area:main;
+    padding:20px;
+    overflow-y:auto;
+  }
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(240px,1fr));
+    gap:14px;
+  }
+  .card{
+    background:var(--paper-raised);
+    border:1px solid var(--line-soft);
+    border-left:4px solid var(--cat-color, var(--teal));
+    border-radius:var(--radius);
+    padding:14px 14px 12px;
+    cursor:pointer;
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .card:hover{ border-color:var(--ink); }
+  .card:focus-visible, .cat-item:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible{
+    outline:2px solid var(--navy); outline-offset:2px;
+  }
+  .card-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .card-tag{
+    font-family:var(--font-mono); font-size:11px; color:var(--ink-soft);
+    letter-spacing:.01em;
+  }
+  .card h3{ margin:0; font-size:15.5px; font-weight:600; line-height:1.3; }
+  .card p.snippet{
+    margin:0; font-size:13px; color:var(--ink-soft); line-height:1.5;
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+  }
+  .card-meta{
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:12px; color:var(--ink-soft); margin-top:2px;
+  }
+  .card-meta .cat-name{ color:var(--cat-color, var(--teal)); font-weight:600; }
+  .res-icons{ display:flex; gap:5px; }
+  .res-icons span{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:20px; height:20px; border-radius:3px; background:var(--paper);
+    font-size:11px; color:var(--ink-soft);
+  }
+
+  .empty{
+    text-align:center; padding:60px 20px; color:var(--ink-soft);
+  }
+  .empty strong{ display:block; color:var(--ink); font-size:16px; margin-bottom:6px; }
+
+  /* ============================================================
+     3. PANEL LATERAL (vista y editor) — un único patrón reusado
+     ============================================================ */
+  .overlay{
+    position:fixed; inset:0; background:rgba(20,24,30,.35);
+    opacity:0; pointer-events:none; transition:opacity .18s ease;
+    z-index:40;
+  }
+  .overlay.show{ opacity:1; pointer-events:auto; }
+
+  .panel{
+    position:fixed; top:0; right:0; height:100%;
+    width:min(520px, 100%);
+    background:var(--paper-raised);
+    border-left:1px solid var(--line);
+    transform:translateX(100%);
+    transition:transform .22s ease;
+    z-index:41;
+    display:flex; flex-direction:column;
+  }
+  .panel.show{ transform:translateX(0); }
+  .panel-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 18px; border-bottom:1px solid var(--line);
+  }
+  .panel-head h2{ margin:0; font-size:16px; }
+  .icon-btn{
+    border:none; background:transparent; cursor:pointer; padding:6px;
+    border-radius:var(--radius); color:var(--ink-soft); display:flex;
+  }
+  .icon-btn:hover{ background:var(--paper); color:var(--ink); }
+  .panel-body{ padding:18px; overflow-y:auto; flex:1; }
+  .panel-foot{
+    padding:14px 18px; border-top:1px solid var(--line);
+    display:flex; gap:8px; justify-content:flex-end;
+  }
+
+  /* --- Vista de lectura --- */
+  .vista-tag{ font-family:var(--font-mono); font-size:12px; color:var(--ink-soft); }
+  .vista-title{ font-size:20px; font-weight:700; margin:6px 0 2px; }
+  .vista-meta{ font-size:13px; color:var(--ink-soft); margin-bottom:14px; }
+  .vista-texto{ font-size:14.5px; line-height:1.65; white-space:pre-wrap; margin-bottom:18px; }
+  .res-block{ margin-bottom:16px; }
+  .res-label{
+    font-family:var(--font-mono); font-size:11px; color:var(--ink-soft);
+    margin-bottom:6px; display:flex; align-items:center; justify-content:space-between;
+  }
+  pre.code{
+    background:var(--code-bg); color:var(--code-text); padding:12px 14px; border-radius:var(--radius);
+    font-family:var(--font-mono); font-size:12.5px; line-height:1.55; overflow-x:auto; margin:0;
+  }
+  .copy-btn{
+    border:none; background:transparent; color:var(--ink-soft); cursor:pointer;
+    font-size:11px; font-family:var(--font-mono); text-decoration:underline;
+  }
+  .res-block img{ max-width:100%; border:1px solid var(--line-soft); border-radius:var(--radius); display:block; }
+  table.tabla-res{ width:100%; border-collapse:collapse; font-size:13px; }
+  table.tabla-res th, table.tabla-res td{
+    border:1px solid var(--line-soft); padding:6px 8px; text-align:left;
+  }
+  table.tabla-res th{ background:var(--paper); font-weight:600; }
+  .doc-chip{
+    display:flex; align-items:center; gap:8px; border:1px solid var(--line-soft);
+    border-radius:var(--radius); padding:8px 10px; font-size:13px;
+  }
+  .doc-chip .ext{
+    font-family:var(--font-mono); font-size:10px; background:var(--code-bg); color:var(--code-text);
+    padding:2px 5px; border-radius:2px;
+  }
+  .doc-chip a{ margin-left:auto; font-size:12px; color:var(--teal); }
+
+  /* --- Formulario del editor --- */
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:12.5px; font-weight:600; margin-bottom:5px; }
+  .field input[type=text], .field input[type=date], .field select, .field textarea{
+    width:100%; border:1px solid var(--line); border-radius:var(--radius);
+    padding:8px 10px; outline:none;
+  }
+  .field textarea{ resize:vertical; min-height:90px; line-height:1.5; }
+  .field input:focus, .field select:focus, .field textarea:focus{ border-color:var(--navy); }
+  .field-row{ display:flex; gap:10px; }
+  .field-row .field{ flex:1; }
+  .hint{ font-size:11.5px; color:var(--ink-soft); margin-top:4px; }
+
+  .res-editor-block{
+    border:1px solid var(--line-soft); border-radius:var(--radius);
+    padding:12px; margin-bottom:10px; position:relative;
+  }
+  .res-editor-block .rm{
+    position:absolute; top:8px; right:8px;
+  }
+  .add-res-row{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+  .add-res-row button{
+    border:1px dashed var(--line); background:transparent; border-radius:var(--radius);
+    padding:7px 10px; font-size:12.5px; cursor:pointer; color:var(--ink-soft);
+  }
+  .add-res-row button:hover{ border-color:var(--ink); color:var(--ink); }
+
+  #btn-dictar.grabando{
+    background:var(--rust); color:#fff; border-color:var(--rust);
+    animation: pulso-dictado 1.2s ease-in-out infinite;
+  }
+  @keyframes pulso-dictado{ 0%,100%{ opacity:1; } 50%{ opacity:.6; } }
+  #btn-dictar:disabled{ opacity:.4; cursor:not-allowed; }
+
+  .toast{
+    position:fixed; left:50%; bottom:22px; transform:translate(-50%,10px);
+    background:var(--code-bg); color:var(--code-text); padding:10px 16px; border-radius:var(--radius);
+    font-size:13px; opacity:0; pointer-events:none; transition:opacity .18s, transform .18s;
+    z-index:60;
+  }
+  .toast.show{ opacity:1; transform:translate(-50%,0); }
+  .toast.err{ background:var(--rust); color:#fff; }
+
+  /* ============================================================
+     4. RESPONSIVE — móvil primero para sidebar y panel
+     ============================================================ */
+  @media (max-width:800px){
+    .app{ grid-template-columns:1fr; grid-template-areas:"header" "sidebar" "main"; }
+    aside.sidebar{
+      border-right:none; border-bottom:1px solid var(--line);
+      padding:10px 14px;
+    }
+    .cat-list{ flex-direction:row; flex-wrap:wrap; margin-bottom:8px; }
+    .cat-row{ width:auto; border:1px solid var(--line-soft); border-radius:var(--radius); }
+    .cat-item{ width:auto; }
+    .sidebar h2{ display:none; }
+    header.top{ flex-wrap:wrap; }
+    .brand h1{ font-size:15px; }
+    .panel{ width:100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ CABECERA ============ -->
+  <header class="top">
+    <div class="brand">
+      <span class="mark">AP</span>
+      <h1>Cuaderno técnico</h1>
+    </div>
+    <div class="searchbar">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+      <input id="buscador" type="text" placeholder="Buscar por título, categoría o contenido…">
+    </div>
+    <button class="btn" id="btn-nuevo">+ Nuevo apunte</button>
+  </header>
+
+  <!-- ============ SIDEBAR: CATEGORÍAS ============ -->
+  <aside class="sidebar">
+    <h2>Categorías</h2>
+    <ul class="cat-list" id="lista-categorias"><!-- generado por JS --></ul>
+    <div class="add-cat">
+      <input type="text" id="nueva-categoria" placeholder="Nueva categoría…">
+      <button id="btn-add-categoria" title="Añadir categoría">+</button>
+    </div>
+
+    <div class="backup-box">
+      <span class="hint" style="display:block; margin-bottom:6px;">Copia de seguridad</span>
+      <div style="display:flex; gap:6px;">
+        <button type="button" id="btn-exportar" class="btn ghost backup-btn">⬇ Exportar</button>
+        <label class="btn ghost backup-btn" style="text-align:center; margin:0;">
+          ⬆ Importar
+          <input type="file" accept="application/json" id="input-importar" style="display:none;">
+        </label>
+      </div>
+      <span class="hint" style="display:block; margin-top:6px;">Exporta antes de cerrar si no confías en que este navegador vaya a guardar los cambios.</span>
+    </div>
+  </aside>
+
+  <!-- ============ GRILLA DE APUNTES ============ -->
+  <main class="content">
+    <div class="grid" id="grid"><!-- generado por JS --></div>
+    <div class="empty" id="empty" style="display:none">
+      <strong>Todavía no hay apuntes aquí</strong>
+      Crea el primero con «Nuevo apunte» o ajusta el filtro de categoría.
+    </div>
+  </main>
+</div>
+
+<!-- ============ OVERLAY COMPARTIDO ============ -->
+<div class="overlay" id="overlay"></div>
+
+<!-- ============ PANEL: VISTA DE LECTURA ============ -->
+<section class="panel" id="panel-vista" aria-hidden="true">
+  <div class="panel-head">
+    <h2>Ficha del apunte</h2>
+    <button class="icon-btn" id="cerrar-vista" aria-label="Cerrar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="panel-body" id="vista-body"><!-- generado por JS --></div>
+  <div class="panel-foot">
+    <button class="btn danger" id="btn-eliminar">Eliminar</button>
+    <button class="btn ghost" id="btn-editar">Editar</button>
+  </div>
+</section>
+
+<!-- ============ PANEL: EDITOR (crear / editar) ============ -->
+<section class="panel" id="panel-editor" aria-hidden="true">
+  <div class="panel-head">
+    <h2 id="editor-titulo-panel">Nuevo apunte</h2>
+    <button class="icon-btn" id="cerrar-editor" aria-label="Cerrar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="panel-body">
+    <form id="form-apunte">
+      <div class="field">
+        <label for="f-titulo">Título</label>
+        <input type="text" id="f-titulo" required placeholder="Ej. Sustitución de rodamientos en motor trifásico">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="f-categoria">Categoría</label>
+          <select id="f-categoria"></select>
+        </div>
+        <div class="field">
+          <label for="f-fecha">Fecha</label>
+          <input type="date" id="f-fecha">
+        </div>
+      </div>
+      <div class="field">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:5px;">
+          <label for="f-texto" style="margin-bottom:0;">Contenido</label>
+          <button type="button" id="btn-dictar" class="btn ghost" style="padding:4px 10px; font-size:12.5px;">🎤 Dictar</button>
+        </div>
+        <textarea id="f-texto" placeholder="Descripción, procedimiento o explicación del tema… (o pulsa «Dictar» y habla)"></textarea>
+        <div class="hint" id="dictado-hint" style="display:none;">El dictado por voz no está disponible en este navegador — funciona mejor en Chrome de escritorio o Android.</div>
+      </div>
+
+      <label style="display:block; font-size:12.5px; font-weight:600; margin-bottom:8px;">Recursos adjuntos</label>
+      <div id="recursos-editor"><!-- generado por JS --></div>
+      <div class="add-res-row">
+        <button type="button" data-tipo="codigo">+ Código</button>
+        <button type="button" data-tipo="imagen">+ Imagen</button>
+        <button type="button" data-tipo="tabla">+ Tabla</button>
+        <button type="button" data-tipo="documento">+ Documento</button>
+      </div>
+    </form>
+  </div>
+  <div class="panel-foot">
+    <button class="btn ghost" id="btn-cancelar-editor">Cancelar</button>
+    <button class="btn" id="btn-guardar">Guardar apunte</button>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+/* ================================================================
+   PASO 1 — ESTADO Y CONSTANTES
+   Todo el estado vive en memoria (variable `estado`) y se sincroniza
+   con el storage persistente del artifact en cada cambio.
+   ================================================================ */
+const CLAVE = 'apuntes-app-data'; // una sola clave: agrupa apuntes + categorías
+const PALETA = ['teal','amber','rust','navy','plum'];
+
+let estado = {
+  apuntes: [],
+  categorias: ['Mantenimiento', 'Redes', 'Programación'],
+  filtroCategoria: 'todas',
+  filtroTexto: ''
+};
+
+// borrador temporal de recursos mientras se edita un apunte
+let borradorRecursos = [];
+let idEnEdicion = null;   // id del apunte que se está editando (null = nuevo)
+let idEnVista = null;     // id del apunte abierto en el panel de lectura
+
+/* ================================================================
+   PASO 2 — PERSISTENCIA
+   Dos backends, elegidos automáticamente:
+
+   1) `db` de Claude — si este archivo se ve como página publicada
+      dentro de claude.ai, window.claude existe y esta capacidad
+      guarda cada apunte en el servidor, ligado a tu cuenta. Es lo
+      único realmente estable: sobrevive a cerrar la app, cambiar de
+      dispositivo o reabrir el enlace.
+   2) localStorage — si se abre como archivo suelto (descargado,
+      content://, file://, etc.). Sirve mientras el navegador
+      mantenga ese origen, pero un origen "content://" de Android no
+      es estable entre aperturas, así que ahí puede seguir
+      perdiéndose. Es una red de seguridad, no una solución garantizada
+      para ese caso — ver la explicación en el chat.
+
+   Todo está protegido con try/catch: si un backend falla, se cae al
+   otro sin romper la app.
+   ================================================================ */
+let dbRef = null;
+let usandoDb = false;
+let capacidadDescargas = null;
+
+async function cargarDatos(){
+  if(window.claude && typeof window.claude.use === 'function'){
+    try{ dbRef = await window.claude.use('db'); } catch(e){ dbRef = null; }
+    try{ capacidadDescargas = await window.claude.use('downloads'); } catch(e){ capacidadDescargas = null; }
+  }
+
+  if(dbRef){
+    try{
+      const catSnap = await dbRef.doc('config/categorias').get();
+      const listaGuardada = catSnap.exists ? catSnap.data().lista : null;
+      if(Array.isArray(listaGuardada) && listaGuardada.length){
+        estado.categorias = listaGuardada;
+      } else {
+        await dbRef.doc('config/categorias').set({ lista: estado.categorias });
+      }
+
+      const q = await dbRef.collection('apuntes').get();
+      if(!q.empty){
+        estado.apuntes = q.docs.map(d => Object.assign({ id: Number(d.id) }, d.data()));
+      } else {
+        sembrarEjemplo();
+        for(const a of estado.apuntes){
+          const { id, ...resto } = a;
+          await dbRef.collection('apuntes').doc(String(id)).set(resto);
+        }
+      }
+      usandoDb = true;
+      return;
+    } catch(e){
+      usandoDb = false; // seguimos abajo con localStorage
+    }
+  }
+
+  try{
+    const raw = localStorage.getItem(CLAVE);
+    if(raw){
+      const datos = JSON.parse(raw);
+      estado.apuntes = datos.apuntes || [];
+      estado.categorias = (datos.categorias && datos.categorias.length) ? datos.categorias : estado.categorias;
+    } else {
+      sembrarEjemplo();
+      localStorage.setItem(CLAVE, JSON.stringify({ apuntes: estado.apuntes, categorias: estado.categorias }));
+    }
+  } catch(e){
+    sembrarEjemplo();
+  }
+}
+
+// Guarda UN apunte (crear o editar). Se usa en vez de reescribir todo el bloque.
+async function guardarApunteEnStorage(apunte){
+  if(usandoDb && dbRef){
+    try{
+      const { id, ...resto } = apunte;
+      await dbRef.collection('apuntes').doc(String(id)).set(resto);
+      return;
+    } catch(e){ mostrarToast('No se pudo guardar en el servidor, se usó copia local.', true); }
+  }
+  guardarTodoEnLocalStorage();
+}
+
+async function eliminarApunteEnStorage(id){
+  if(usandoDb && dbRef){
+    try{
+      await dbRef.collection('apuntes').doc(String(id)).delete();
+      return;
+    } catch(e){ mostrarToast('No se pudo eliminar en el servidor, se usó copia local.', true); }
+  }
+  guardarTodoEnLocalStorage();
+}
+
+async function guardarCategoriasEnStorage(){
+  if(usandoDb && dbRef){
+    try{
+      await dbRef.doc('config/categorias').set({ lista: estado.categorias });
+      return;
+    } catch(e){ mostrarToast('No se pudieron guardar las categorías en el servidor.', true); }
+  }
+  guardarTodoEnLocalStorage();
+}
+
+function guardarTodoEnLocalStorage(){
+  try{
+    localStorage.setItem(CLAVE, JSON.stringify({ apuntes: estado.apuntes, categorias: estado.categorias }));
+  } catch(e){
+    mostrarToast('No se pudo guardar: este navegador está bloqueando el almacenamiento local.', true);
+  }
+}
+
+/* ----------------------------------------------------------------
+   Copia de seguridad manual (exportar/importar un .json)
+   No depende de ningún storage del navegador ni de ningún servidor:
+   es la forma más segura de no perder nada, sobre todo si el origen
+   del navegador (ej. content:// en Android) no es estable.
+   ---------------------------------------------------------------- */
+function exportarCopia(){
+  const payload = JSON.stringify({ apuntes: estado.apuntes, categorias: estado.categorias }, null, 2);
+  const blob = new Blob([payload], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const enlace = document.createElement('a');
+  enlace.href = url;
+  enlace.download = 'apuntes-copia-' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+  URL.revokeObjectURL(url);
+  mostrarToast('Copia exportada');
+}
+
+function importarCopia(archivo){
+  const lector = new FileReader();
+  lector.onload = async () => {
+    try{
+      const datos = JSON.parse(lector.result);
+      if(!Array.isArray(datos.apuntes)) throw new Error('formato inválido');
+      estado.apuntes = datos.apuntes;
+      estado.categorias = (Array.isArray(datos.categorias) && datos.categorias.length) ? datos.categorias : estado.categorias;
+
+      guardarTodoEnLocalStorage(); // siempre, es la red de seguridad
+      if(usandoDb && dbRef){ // si además hay guardado en servidor disponible, sincroniza ahí también
+        try{
+          for(const a of estado.apuntes){
+            const { id, ...resto } = a;
+            await dbRef.collection('apuntes').doc(String(id)).set(resto);
+          }
+          await dbRef.doc('config/categorias').set({ lista: estado.categorias });
+        } catch(e){ /* localStorage ya quedó al día de todos modos */ }
+      }
+
+      refrescarTodo();
+      mostrarToast('Copia importada');
+    } catch(e){
+      mostrarToast('Ese archivo no es una copia válida de este cuaderno.', true);
+    }
+  };
+  lector.readAsText(archivo);
+}
+
+function sembrarEjemplo(){
+  estado.apuntes = [{
+    id: 1,
+    titulo: 'Cómo se organiza este cuaderno',
+    categoria: 'Programación',
+    fecha: new Date().toISOString().slice(0,10),
+    contenido_texto: 'Cada apunte tiene un título, una categoría y una fecha. Puedes añadirle bloques de código, imágenes, tablas y documentos adjuntos desde el editor. Usa el buscador de arriba para filtrar por título, categoría o contenido, y la barra lateral para filtrar por categoría. Este apunte de ejemplo puedes editarlo o borrarlo cuando quieras.',
+    recursos: [
+      { tipo:'codigo', formato:'js', data:"function saludo(nombre){\n  return `Hola, ${nombre}`;\n}" },
+      { tipo:'tabla', headers:['Campo','Tipo','Obligatorio'], rows:[['titulo','texto','sí'],['categoria','texto','sí'],['recursos','lista','no']] }
+    ]
+  }];
+}
+
+
+/* ================================================================
+   PASO 3 — UTILIDADES
+   ================================================================ */
+function escapeHtml(str){
+  return String(str ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function nuevoId(){
+  return estado.apuntes.reduce((max,a) => Math.max(max, a.id), 0) + 1;
+}
+function etiquetaAP(id){
+  return 'AP-' + String(id).padStart(3,'0');
+}
+function colorCategoria(nombre){
+  let hash = 0;
+  for(let i=0;i<nombre.length;i++) hash = (hash*31 + nombre.charCodeAt(i)) >>> 0;
+  return `var(--${PALETA[hash % PALETA.length]})`;
+}
+function formatFecha(iso){
+  if(!iso) return '';
+  const [y,m,d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function mostrarToast(msg, esError){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.toggle('err', !!esError);
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 2400);
+}
+function fileABase64(file){
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result); // incluye el prefijo data:...;base64,
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+/* ================================================================
+   PASO 4 — RENDER: SIDEBAR DE CATEGORÍAS
+   ================================================================ */
+function renderCategorias(){
+  const cont = document.getElementById('lista-categorias');
+  const conteo = { todas: estado.apuntes.length };
+  estado.categorias.forEach(c => conteo[c] = estado.apuntes.filter(a => a.categoria === c).length);
+
+  const itemTodas = `
+    <li class="cat-row">
+      <button class="cat-item ${estado.filtroCategoria==='todas' ? 'active':''}" data-cat="todas">
+        <span class="cat-dot" style="background:var(--ink)"></span>
+        Todas
+        <span class="count">${conteo.todas}</span>
+      </button>
+    </li>`;
+
+  const resto = estado.categorias.map(c => `
+    <li class="cat-row">
+      <button class="cat-item ${estado.filtroCategoria===c ? 'active':''}" data-cat="${escapeHtml(c)}">
+        <span class="cat-dot" style="background:${colorCategoria(c)}"></span>
+        ${escapeHtml(c)}
+        <span class="count">${conteo[c] || 0}</span>
+      </button>
+      <button class="cat-del" data-del-cat="${escapeHtml(c)}" title="Eliminar categoría" aria-label="Eliminar categoría ${escapeHtml(c)}">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
+      </button>
+    </li>`).join('');
+
+  cont.innerHTML = itemTodas + resto;
+}
+
+/* ================================================================
+   PASO 5 — RENDER: GRILLA DE TARJETAS
+   ================================================================ */
+const ICONO_RECURSO = { codigo:'{ }', imagen:'IMG', tabla:'TBL', documento:'DOC' };
+
+function apuntesFiltrados(){
+  const texto = estado.filtroTexto.trim().toLowerCase();
+  return estado.apuntes.filter(a => {
+    const pasaCategoria = estado.filtroCategoria === 'todas' || a.categoria === estado.filtroCategoria;
+    if(!pasaCategoria) return false;
+    if(!texto) return true;
+    const bolsa = (a.titulo + ' ' + a.categoria + ' ' + a.contenido_texto).toLowerCase();
+    return bolsa.includes(texto);
+  }).sort((a,b) => (b.fecha||'').localeCompare(a.fecha||''));
+}
+
+function renderGrid(){
+  const grid = document.getElementById('grid');
+  const vacio = document.getElementById('empty');
+  const lista = apuntesFiltrados();
+
+  if(lista.length === 0){
+    grid.innerHTML = '';
+    vacio.style.display = 'block';
+    return;
+  }
+  vacio.style.display = 'none';
+
+  grid.innerHTML = lista.map(a => `
+    <article class="card" tabindex="0" data-id="${a.id}" style="--cat-color:${colorCategoria(a.categoria)}">
+      <div class="card-top">
+        <span class="card-tag">${etiquetaAP(a.id)}</span>
+        <div class="res-icons">${(a.recursos||[]).slice(0,4).map(r => `<span title="${r.tipo}">${ICONO_RECURSO[r.tipo]||'?'}</span>`).join('')}</div>
+      </div>
+      <h3>${escapeHtml(a.titulo)}</h3>
+      <p class="snippet">${escapeHtml(a.contenido_texto || 'Sin descripción.')}</p>
+      <div class="card-meta">
+        <span class="cat-name" style="--cat-color:${colorCategoria(a.categoria)}">${escapeHtml(a.categoria)}</span>
+        <span>${formatFecha(a.fecha)}</span>
+      </div>
+    </article>
+  `).join('');
+}
+
+function refrescarTodo(){
+  renderCategorias();
+  renderGrid();
+}
+
+/* ================================================================
+   PASO 6 — PANEL DE VISTA (lectura de un apunte)
+   ================================================================ */
+function abrirVista(id){
+  const a = estado.apuntes.find(x => x.id === id);
+  if(!a) return;
+  idEnVista = id;
+
+  const bloquesRecursos = (a.recursos||[]).map(r => renderRecursoVista(r)).join('');
+
+  document.getElementById('vista-body').innerHTML = `
+    <span class="vista-tag">${etiquetaAP(a.id)}</span>
+    <div class="vista-title">${escapeHtml(a.titulo)}</div>
+    <div class="vista-meta">
+      <span style="color:${colorCategoria(a.categoria)}; font-weight:600;">${escapeHtml(a.categoria)}</span>
+      · ${formatFecha(a.fecha)}
+    </div>
+    <div class="vista-texto">${escapeHtml(a.contenido_texto || 'Sin descripción.')}</div>
+    ${bloquesRecursos}
+  `;
+
+  // botón "copiar" de cada bloque de código
+  document.getElementById('vista-body').querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      navigator.clipboard.writeText(btn.dataset.code).then(() => mostrarToast('Código copiado'));
+    });
+  });
+
+  // botón "descargar" de cada documento adjunto (mismo orden que se renderizaron)
+  const docsConDatos = (a.recursos||[]).filter(r => r.tipo === 'documento' && r.data_base64);
+  document.getElementById('vista-body').querySelectorAll('.descargar-doc').forEach((btn, i) => {
+    btn.addEventListener('click', () => descargarDocumento(docsConDatos[i]));
+  });
+
+  abrirPanel('panel-vista');
+}
+
+/* Convierte una data URI (base64) en un Blob real, para poder ofrecerla
+   como descarga con la capacidad `downloads` de la página publicada. */
+function dataUriABlob(dataUri){
+  const [meta, base64] = dataUri.split(',');
+  const mime = (meta.match(/data:(.*?);base64/) || [,'application/octet-stream'])[1];
+  const binario = atob(base64);
+  const bytes = new Uint8Array(binario.length);
+  for(let i=0; i<binario.length; i++) bytes[i] = binario.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+async function descargarDocumento(r){
+  if(capacidadDescargas){
+    try{
+      await capacidadDescargas.save({ filename: r.nombre || ('documento.' + (r.formato||'dat')), data: dataUriABlob(r.data_base64) });
+    } catch(e){
+      if(!e || e.code !== 'declined') mostrarToast('No se pudo descargar el archivo.', true);
+    }
+    return;
+  }
+  // sin la capacidad (archivo suelto / vista previa sin publicar): enlace clásico
+  const enlace = document.createElement('a');
+  enlace.href = r.data_base64;
+  enlace.download = r.nombre || 'documento';
+  document.body.appendChild(enlace);
+  enlace.click();
+  enlace.remove();
+}
+
+function renderRecursoVista(r){
+  if(r.tipo === 'codigo'){
+    return `
+      <div class="res-block">
+        <div class="res-label">
+          <span>Código · ${escapeHtml(r.formato||'texto')}</span>
+          <button type="button" class="copy-btn" data-code="${escapeHtml(r.data)}">Copiar</button>
+        </div>
+        <pre class="code">${escapeHtml(r.data)}</pre>
+      </div>`;
+  }
+  if(r.tipo === 'imagen'){
+    return `
+      <div class="res-block">
+        <div class="res-label"><span>Imagen</span></div>
+        <img src="${r.url_o_base64}" alt="${escapeHtml(r.nombre||'imagen adjunta')}">
+      </div>`;
+  }
+  if(r.tipo === 'tabla'){
+    const encab = (r.headers||[]).map(h => `<th>${escapeHtml(h)}</th>`).join('');
+    const filas = (r.rows||[]).map(fila => `<tr>${fila.map(c => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('');
+    return `
+      <div class="res-block">
+        <div class="res-label"><span>Tabla</span></div>
+        <div style="overflow-x:auto;"><table class="tabla-res"><thead><tr>${encab}</tr></thead><tbody>${filas}</tbody></table></div>
+      </div>`;
+  }
+  if(r.tipo === 'documento'){
+    const descarga = r.data_base64
+      ? `<button type="button" class="descargar-doc" style="margin-left:auto; border:none; background:transparent; color:var(--teal); font-size:12px; cursor:pointer; text-decoration:underline;">Descargar</button>`
+      : `<span style="margin-left:auto; color:var(--ink-soft); font-size:11.5px;">No almacenado (archivo grande)</span>`;
+    return `
+      <div class="res-block">
+        <div class="res-label"><span>Documento</span></div>
+        <div class="doc-chip">
+          <span class="ext">${escapeHtml((r.formato||'').toUpperCase())}</span>
+          ${escapeHtml(r.nombre||'archivo')}
+          ${descarga}
+        </div>
+      </div>`;
+  }
+  return '';
+}
+
+/* ================================================================
+   PASO 7 — PANEL EDITOR (crear / editar apunte)
+   ================================================================ */
+function poblarSelectCategorias(seleccion){
+  const sel = document.getElementById('f-categoria');
+  sel.innerHTML = estado.categorias.map(c =>
+    `<option value="${escapeHtml(c)}" ${c===seleccion?'selected':''}>${escapeHtml(c)}</option>`
+  ).join('');
+}
+
+function abrirEditor(id){
+  detenerDictado(); // por si quedó una grabación abierta de una edición anterior
+  idEnEdicion = id;
+  const a = id ? estado.apuntes.find(x => x.id === id) : null;
+
+  document.getElementById('editor-titulo-panel').textContent = a ? 'Editar apunte' : 'Nuevo apunte';
+  document.getElementById('f-titulo').value = a ? a.titulo : '';
+  document.getElementById('f-texto').value = a ? a.contenido_texto : '';
+  document.getElementById('f-fecha').value = a ? a.fecha : new Date().toISOString().slice(0,10);
+  poblarSelectCategorias(a ? a.categoria : estado.categorias[0]);
+
+  borradorRecursos = a ? JSON.parse(JSON.stringify(a.recursos||[])) : [];
+  renderRecursosEditor();
+
+  abrirPanel('panel-editor');
+  document.getElementById('f-titulo').focus();
+}
+
+/* ----------------------------------------------------------------
+   PASO 7B — DICTADO POR VOZ para el campo "Contenido"
+   Usa la API nativa del navegador (SpeechRecognition). No depende
+   de ninguna librería externa. Si el navegador no la soporta, el
+   botón se desactiva solo y se avisa con el mensaje de ayuda.
+   ---------------------------------------------------------------- */
+const MotorVoz = window.SpeechRecognition || window.webkitSpeechRecognition;
+let reconocimiento = null;
+let dictando = false;
+let textoAntesDeDictar = '';
+
+function actualizarSoporteDictado(){
+  const btn = document.getElementById('btn-dictar');
+  const hint = document.getElementById('dictado-hint');
+  if(!MotorVoz){
+    btn.disabled = true;
+    btn.title = 'No disponible en este navegador';
+    hint.style.display = 'block';
+  }
+}
+
+function iniciarDictado(){
+  if(!MotorVoz) return;
+  const textarea = document.getElementById('f-texto');
+  textoAntesDeDictar = textarea.value ? textarea.value.replace(/\s+$/,'') + ' ' : '';
+
+  reconocimiento = new MotorVoz();
+  reconocimiento.lang = 'es-ES';
+  reconocimiento.continuous = true;
+  reconocimiento.interimResults = true;
+
+  reconocimiento.onresult = (e) => {
+    let final = '', interim = '';
+    for(let i = e.resultIndex; i < e.results.length; i++){
+      const fragmento = e.results[i][0].transcript;
+      if(e.results[i].isFinal) final += fragmento + ' ';
+      else interim += fragmento;
+    }
+    if(final) textoAntesDeDictar += final;
+    textarea.value = textoAntesDeDictar + interim;
+  };
+
+  reconocimiento.onerror = (e) => {
+    if(e.error === 'not-allowed' || e.error === 'service-not-allowed'){
+      mostrarToast('Necesitas dar permiso de micrófono para dictar.', true);
+    } else if(e.error !== 'no-speech' && e.error !== 'aborted'){
+      mostrarToast('No se pudo usar el dictado (' + e.error + ').', true);
+    }
+    if(e.error !== 'no-speech') detenerDictado();
+  };
+
+  reconocimiento.onend = () => {
+    // Chrome a veces corta la sesión sola tras un silencio largo;
+    // si el usuario no pidió detenerlo, se reinicia automáticamente.
+    if(dictando){
+      try{ reconocimiento.start(); } catch(err){ detenerDictado(); }
+    }
+  };
+
+  try{
+    reconocimiento.start();
+    dictando = true;
+    actualizarBotonDictado();
+  } catch(err){
+    mostrarToast('No se pudo iniciar el dictado.', true);
+  }
+}
+
+function detenerDictado(){
+  dictando = false;
+  if(reconocimiento){
+    try{ reconocimiento.stop(); } catch(e){}
+  }
+  actualizarBotonDictado();
+}
+
+function actualizarBotonDictado(){
+  const btn = document.getElementById('btn-dictar');
+  if(!btn) return;
+  btn.classList.toggle('grabando', dictando);
+  btn.innerHTML = dictando ? '⏹ Detener' : '🎤 Dictar';
+}
+
+function renderRecursosEditor(){
+  const cont = document.getElementById('recursos-editor');
+  if(borradorRecursos.length === 0){
+    cont.innerHTML = `<p class="hint" style="margin:0 0 12px;">Todavía no hay recursos. Añade uno con los botones de abajo.</p>`;
+    return;
+  }
+  cont.innerHTML = borradorRecursos.map((r,i) => `
+    <div class="res-editor-block" data-idx="${i}">
+      <button type="button" class="icon-btn rm" data-rm="${i}" aria-label="Quitar recurso">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      ${formularioRecurso(r, i)}
+    </div>
+  `).join('');
+
+  // listeners de edición de cada campo según tipo
+  borradorRecursos.forEach((r,i) => vincularCamposRecurso(r,i));
+
+  cont.querySelectorAll('[data-rm]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      borradorRecursos.splice(Number(btn.dataset.rm), 1);
+      renderRecursosEditor();
+    });
+  });
+}
+
+function formularioRecurso(r, i){
+  if(r.tipo === 'codigo'){
+    return `
+      <label class="hint">Código · lenguaje</label>
+      <select data-campo="formato" data-idx="${i}" style="margin-bottom:8px; width:100%; padding:6px; border:1px solid var(--line); border-radius:var(--radius);">
+        ${['js','py','html','css','sql','bash','json','otro'].map(f => `<option value="${f}" ${r.formato===f?'selected':''}>${f}</option>`).join('')}
+      </select>
+      <textarea data-campo="data" data-idx="${i}" style="width:100%; min-height:80px; font-family:var(--font-mono); font-size:12.5px; border:1px solid var(--line); border-radius:var(--radius); padding:8px;" placeholder="Pega aquí el código…">${escapeHtml(r.data||'')}</textarea>`;
+  }
+  if(r.tipo === 'imagen'){
+    return `
+      <label class="hint">Imagen — pega una URL o sube un archivo</label>
+      <input type="text" data-campo="url_o_base64" data-idx="${i}" placeholder="https://…" value="${r.url_o_base64 && !r.url_o_base64.startsWith('data:') ? escapeHtml(r.url_o_base64):''}" style="width:100%; padding:7px 8px; border:1px solid var(--line); border-radius:var(--radius); margin-bottom:6px;">
+      <input type="file" accept="image/*" data-campo="archivo-imagen" data-idx="${i}" style="margin:2px 0 6px; width:100%;">
+      <div class="hint">Si subes el archivo queda siempre visible. Una URL externa puede no cargar por seguridad de la página.</div>
+      ${r.url_o_base64 ? `<img src="${r.url_o_base64}" style="max-width:100%; margin-top:8px; border-radius:var(--radius); border:1px solid var(--line-soft);">` : ''}`;
+  }
+  if(r.tipo === 'tabla'){
+    const csv = [r.headers||[], ...(r.rows||[])].map(f => f.join(',')).join('\n');
+    return `
+      <label class="hint">Tabla — primera línea = encabezados, separa columnas con comas</label>
+      <textarea data-campo="csv" data-idx="${i}" style="width:100%; min-height:80px; font-family:var(--font-mono); font-size:12.5px; border:1px solid var(--line); border-radius:var(--radius); padding:8px;" placeholder="Campo,Tipo,Obligatorio
+titulo,texto,sí">${escapeHtml(csv)}</textarea>`;
+  }
+  if(r.tipo === 'documento'){
+    return `
+      <label class="hint">Documento — nombre y formato (funciona sin subir archivo)</label>
+      <div class="field-row" style="margin-bottom:6px;">
+        <input type="text" data-campo="nombre" data-idx="${i}" placeholder="nombre-del-archivo.pdf" value="${escapeHtml(r.nombre||'')}" style="flex:2; padding:7px 8px; border:1px solid var(--line); border-radius:var(--radius);">
+        <input type="text" data-campo="formato" data-idx="${i}" placeholder="pdf" value="${escapeHtml(r.formato||'')}" style="flex:1; padding:7px 8px; border:1px solid var(--line); border-radius:var(--radius);">
+      </div>
+      <input type="file" data-campo="archivo-doc" data-idx="${i}" style="margin:2px 0 6px; width:100%;">
+      <div class="hint">${r.data_base64 ? 'Archivo adjunto guardado — se puede descargar desde la ficha.' : 'Escribiendo nombre y formato ya queda registrado; subir el archivo además guarda su contenido si pesa menos de ~700 KB.'}</div>`;
+  }
+  return '';
+}
+
+function vincularCamposRecurso(r, i){
+  const cont = document.querySelector(`.res-editor-block[data-idx="${i}"]`);
+  if(!cont) return;
+
+  // Cualquier campo de texto/select con data-campo se vincula de forma genérica,
+  // así ningún tipo de recurso depende de que un selector de archivo se abra.
+  cont.querySelectorAll('[data-campo]').forEach(el => {
+    const campo = el.dataset.campo;
+    if(campo === 'archivo-imagen' || campo === 'archivo-doc') return; // estos se atan aparte, más abajo
+    const evento = el.tagName === 'SELECT' ? 'change' : 'input';
+    el.addEventListener(evento, () => {
+      if(campo === 'csv'){
+        const lineas = el.value.split('\n').filter(l => l.trim() !== '');
+        r.headers = lineas[0] ? lineas[0].split(',').map(s=>s.trim()) : [];
+        r.rows = lineas.slice(1).map(l => l.split(',').map(s=>s.trim()));
+      } else {
+        r[campo] = el.value;
+      }
+    });
+  });
+
+  const campoImg = cont.querySelector('[data-campo="archivo-imagen"]');
+  if(campoImg) campoImg.addEventListener('change', async () => {
+    const file = campoImg.files[0];
+    if(!file) return;
+    r.url_o_base64 = await fileABase64(file);
+    r.nombre = file.name;
+    renderRecursosEditor();
+  });
+
+  const campoDoc = cont.querySelector('[data-campo="archivo-doc"]');
+  if(campoDoc) campoDoc.addEventListener('change', async () => {
+    const file = campoDoc.files[0];
+    if(!file) return;
+    r.nombre = file.name;
+    r.formato = (file.name.split('.').pop()||'').toLowerCase();
+    if(file.size <= 700*1024){
+      r.data_base64 = await fileABase64(file);
+    } else {
+      delete r.data_base64;
+      mostrarToast('El archivo es grande: solo se guarda el nombre, no el contenido.', true);
+    }
+    renderRecursosEditor();
+  });
+}
+
+function guardarApunte(ev){
+  ev.preventDefault();
+  const titulo = document.getElementById('f-titulo').value.trim();
+  if(!titulo){ mostrarToast('El título es obligatorio', true); return; }
+
+  const apunte = {
+    id: idEnEdicion || nuevoId(),
+    titulo,
+    categoria: document.getElementById('f-categoria').value,
+    fecha: document.getElementById('f-fecha').value || new Date().toISOString().slice(0,10),
+    contenido_texto: document.getElementById('f-texto').value.trim(),
+    recursos: borradorRecursos
+  };
+
+  const idx = estado.apuntes.findIndex(a => a.id === apunte.id);
+  if(idx >= 0) estado.apuntes[idx] = apunte; else estado.apuntes.push(apunte);
+
+  guardarApunteEnStorage(apunte).then(() => {
+    mostrarToast('Apunte guardado');
+    cerrarPaneles();
+    refrescarTodo();
+  });
+}
+
+function eliminarApunteActual(){
+  if(idEnVista == null) return;
+  if(!confirm('¿Eliminar este apunte? Esta acción no se puede deshacer.')) return;
+  const idAEliminar = idEnVista;
+  estado.apuntes = estado.apuntes.filter(a => a.id !== idAEliminar);
+  eliminarApunteEnStorage(idAEliminar).then(() => {
+    mostrarToast('Apunte eliminado');
+    cerrarPaneles();
+    refrescarTodo();
+  });
+}
+
+/* ================================================================
+   PASO 8 — APERTURA / CIERRE DE PANELES
+   ================================================================ */
+function abrirPanel(idPanel){
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById(idPanel).classList.add('show');
+  document.getElementById(idPanel).setAttribute('aria-hidden','false');
+}
+function cerrarPaneles(){
+  detenerDictado(); // no dejar el micrófono escuchando si se cierra el panel
+  document.getElementById('overlay').classList.remove('show');
+  ['panel-vista','panel-editor'].forEach(id => {
+    document.getElementById(id).classList.remove('show');
+    document.getElementById(id).setAttribute('aria-hidden','true');
+  });
+}
+
+/* ================================================================
+   PASO 9 — EVENTOS GLOBALES
+   ================================================================ */
+document.getElementById('overlay').addEventListener('click', cerrarPaneles);
+document.getElementById('cerrar-vista').addEventListener('click', cerrarPaneles);
+document.getElementById('cerrar-editor').addEventListener('click', cerrarPaneles);
+document.getElementById('btn-cancelar-editor').addEventListener('click', cerrarPaneles);
+document.addEventListener('keydown', e => { if(e.key === 'Escape') cerrarPaneles(); });
+
+document.getElementById('btn-dictar').addEventListener('click', () => {
+  if(dictando) detenerDictado(); else iniciarDictado();
+});
+
+document.getElementById('btn-nuevo').addEventListener('click', () => abrirEditor(null));
+document.getElementById('btn-editar').addEventListener('click', () => abrirEditor(idEnVista));
+document.getElementById('btn-eliminar').addEventListener('click', eliminarApunteActual);
+document.getElementById('form-apunte').addEventListener('submit', guardarApunte);
+document.getElementById('btn-guardar').addEventListener('click', () => document.getElementById('form-apunte').requestSubmit());
+
+document.querySelectorAll('.add-res-row [data-tipo]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tipo = btn.dataset.tipo;
+    const base = { tipo };
+    if(tipo === 'codigo') Object.assign(base, { formato:'js', data:'' });
+    if(tipo === 'tabla') Object.assign(base, { headers:[], rows:[] });
+    borradorRecursos.push(base);
+    renderRecursosEditor();
+  });
+});
+
+document.getElementById('grid').addEventListener('click', e => {
+  const card = e.target.closest('.card');
+  if(card) abrirVista(Number(card.dataset.id));
+});
+document.getElementById('grid').addEventListener('keydown', e => {
+  if(e.key === 'Enter'){
+    const card = e.target.closest('.card');
+    if(card) abrirVista(Number(card.dataset.id));
+  }
+});
+
+document.getElementById('lista-categorias').addEventListener('click', e => {
+  const btnDel = e.target.closest('[data-del-cat]');
+  if(btnDel){ eliminarCategoria(btnDel.dataset.delCat); return; }
+  const btn = e.target.closest('[data-cat]');
+  if(!btn) return;
+  estado.filtroCategoria = btn.dataset.cat;
+  refrescarTodo();
+});
+
+async function eliminarCategoria(nombre){
+  const afectados = estado.apuntes.filter(a => a.categoria === nombre);
+  const aviso = afectados.length
+    ? `Se eliminará la categoría "${nombre}". ${afectados.length} apunte(s) pasarán a "Sin categoría". ¿Continuar?`
+    : `¿Eliminar la categoría "${nombre}"?`;
+  if(!confirm(aviso)) return;
+
+  estado.categorias = estado.categorias.filter(c => c !== nombre);
+  if(afectados.length && !estado.categorias.includes('Sin categoría')){
+    estado.categorias.push('Sin categoría');
+  }
+
+  for(const a of afectados){
+    a.categoria = 'Sin categoría';
+    await guardarApunteEnStorage(a);
+  }
+  await guardarCategoriasEnStorage();
+
+  if(estado.filtroCategoria === nombre) estado.filtroCategoria = 'todas';
+  mostrarToast('Categoría eliminada');
+  refrescarTodo();
+}
+
+document.getElementById('buscador').addEventListener('input', e => {
+  estado.filtroTexto = e.target.value;
+  renderGrid();
+});
+
+document.getElementById('btn-add-categoria').addEventListener('click', () => {
+  const input = document.getElementById('nueva-categoria');
+  const nombre = input.value.trim();
+  if(!nombre) return;
+  if(!estado.categorias.includes(nombre)) estado.categorias.push(nombre);
+  input.value = '';
+  guardarCategoriasEnStorage().then(refrescarTodo);
+});
+document.getElementById('nueva-categoria').addEventListener('keydown', e => {
+  if(e.key === 'Enter'){ e.preventDefault(); document.getElementById('btn-add-categoria').click(); }
+});
+
+document.getElementById('btn-exportar').addEventListener('click', exportarCopia);
+document.getElementById('input-importar').addEventListener('change', (e) => {
+  const archivo = e.target.files[0];
+  if(archivo) importarCopia(archivo);
+  e.target.value = '';
+});
+
+/* ================================================================
+   PASO 10 — ARRANQUE
+   ================================================================ */
+(async function iniciar(){
+  actualizarSoporteDictado();
+  await cargarDatos();
+  refrescarTodo();
+})();
+</script>
+</body>
+</html>

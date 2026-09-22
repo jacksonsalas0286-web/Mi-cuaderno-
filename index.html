@@ -495,12 +495,36 @@
         <button type="button" data-tipo="imagen">+ Imagen</button>
         <button type="button" data-tipo="tabla">+ Tabla</button>
         <button type="button" data-tipo="documento">+ Documento</button>
+        <button type="button" data-tipo="video">+ Video</button>
       </div>
     </form>
   </div>
   <div class="panel-foot">
     <button class="btn ghost" id="btn-cancelar-editor">Cancelar</button>
     <button class="btn" id="btn-guardar">Guardar apunte</button>
+  </div>
+</section>
+
+<!-- ============ OVERLAY Y PANEL: GRABADOR DE VIDEO (se abre sobre el editor) ============ -->
+<div class="overlay" id="overlay-grabador" style="z-index:50;"></div>
+<section class="panel" id="panel-grabador" aria-hidden="true" style="z-index:51;">
+  <div class="panel-head">
+    <h2>Grabar video</h2>
+    <button class="icon-btn" id="cerrar-grabador" aria-label="Cerrar">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+  <div class="panel-body" style="display:flex; flex-direction:column; gap:12px;">
+    <video id="video-preview-vivo" autoplay playsinline muted style="width:100%; border-radius:var(--radius); background:#000; aspect-ratio:4/3;"></video>
+    <video id="video-preview-grabado" controls playsinline style="width:100%; border-radius:var(--radius); background:#000; aspect-ratio:4/3; display:none;"></video>
+    <span class="hint" id="grabador-estado">Toca «Iniciar» para pedir permiso de cámara.</span>
+  </div>
+  <div class="panel-foot" style="flex-wrap:wrap;">
+    <button type="button" class="btn ghost" id="btn-grabar-cancelar">Cancelar</button>
+    <button type="button" class="btn ghost" id="btn-grabar-reiniciar" style="display:none;">Grabar de nuevo</button>
+    <button type="button" class="btn" id="btn-grabar-iniciar">Iniciar</button>
+    <button type="button" class="btn danger" id="btn-grabar-detener" style="display:none;">Detener</button>
+    <button type="button" class="btn" id="btn-grabar-usar" style="display:none;">Usar este video</button>
   </div>
 </section>
 
@@ -516,6 +540,7 @@
    ================================================================ */
 const CLAVE = 'apuntes-app-data'; // una sola clave: agrupa apuntes + categorías
 const PALETA = ['teal','amber','rust','navy','plum'];
+const LIMITE_VIDEO_BYTES = 3 * 1024 * 1024; // ~3 MB: localStorage no da para mucho más
 
 let estado = {
   apuntes: [],
@@ -772,13 +797,19 @@ function renderCategorias(){
       </button>
     </li>`).join('');
 
-  cont.innerHTML = itemTodas + resto;
+  // Estado vacío explícito: si no queda ninguna categoría propia, no se deja
+  // un hueco ambiguo — se avisa con claridad que la lista está vacía.
+  const sinCategorias = estado.categorias.length === 0
+    ? `<li style="padding:6px 8px;"><span class="hint">No hay categorías todavía. Agrega una abajo.</span></li>`
+    : '';
+
+  cont.innerHTML = itemTodas + resto + sinCategorias;
 }
 
 /* ================================================================
    PASO 5 — RENDER: GRILLA DE TARJETAS
    ================================================================ */
-const ICONO_RECURSO = { codigo:'{ }', imagen:'IMG', tabla:'TBL', documento:'DOC' };
+const ICONO_RECURSO = { codigo:'{ }', imagen:'IMG', tabla:'TBL', documento:'DOC', video:'VID' };
 
 function apuntesFiltrados(){
   const texto = estado.filtroTexto.trim().toLowerCase();
@@ -858,6 +889,17 @@ function abrirVista(id){
     btn.addEventListener('click', () => descargarDocumento(docsConDatos[i]));
   });
 
+  // botón "Vista previa" de cada PDF: muestra/oculta el iframe que ya está en el DOM
+  document.getElementById('vista-body').querySelectorAll('.ver-pdf-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const cont = btn.closest('.res-block').querySelector('.pdf-preview-cont');
+      if(!cont) return;
+      const visible = cont.style.display !== 'none';
+      cont.style.display = visible ? 'none' : 'block';
+      btn.textContent = visible ? 'Vista previa' : 'Ocultar vista previa';
+    });
+  });
+
   abrirPanel('panel-vista');
 }
 
@@ -908,6 +950,17 @@ function renderRecursoVista(r){
         <img src="${r.url_o_base64}" alt="${escapeHtml(r.nombre||'imagen adjunta')}">
       </div>`;
   }
+  if(r.tipo === 'video'){
+    return r.data_base64 ? `
+      <div class="res-block">
+        <div class="res-label"><span>Video</span></div>
+        <video src="${r.data_base64}" controls playsinline style="width:100%; border-radius:var(--radius); background:#000;"></video>
+      </div>` : `
+      <div class="res-block">
+        <div class="res-label"><span>Video</span></div>
+        <div class="doc-chip"><span class="ext">${escapeHtml((r.formato||'').toUpperCase())}</span>${escapeHtml(r.nombre||'sin guardar')}</div>
+      </div>`;
+  }
   if(r.tipo === 'tabla'){
     const encab = (r.headers||[]).map(h => `<th>${escapeHtml(h)}</th>`).join('');
     const filas = (r.rows||[]).map(fila => `<tr>${fila.map(c => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`).join('');
@@ -918,17 +971,22 @@ function renderRecursoVista(r){
       </div>`;
   }
   if(r.tipo === 'documento'){
+    const esPdf = r.data_base64 && (r.formato||'').toLowerCase() === 'pdf';
     const descarga = r.data_base64
       ? `<button type="button" class="descargar-doc" style="margin-left:auto; border:none; background:transparent; color:var(--teal); font-size:12px; cursor:pointer; text-decoration:underline;">Descargar</button>`
       : `<span style="margin-left:auto; color:var(--ink-soft); font-size:11.5px;">No almacenado (archivo grande)</span>`;
     return `
       <div class="res-block">
-        <div class="res-label"><span>Documento</span></div>
+        <div class="res-label">
+          <span>Documento</span>
+          ${esPdf ? `<button type="button" class="ver-pdf-btn" style="border:none; background:transparent; color:var(--teal); font-size:12px; cursor:pointer; text-decoration:underline;">Vista previa</button>` : ''}
+        </div>
         <div class="doc-chip">
           <span class="ext">${escapeHtml((r.formato||'').toUpperCase())}</span>
           ${escapeHtml(r.nombre||'archivo')}
           ${descarga}
         </div>
+        ${esPdf ? `<div class="pdf-preview-cont" style="display:none; margin-top:8px;"><iframe src="${r.data_base64}" style="width:100%; height:60vh; border:1px solid var(--line-soft); border-radius:var(--radius);"></iframe></div>` : ''}
       </div>`;
   }
   return '';
@@ -985,6 +1043,11 @@ function actualizarSoporteDictado(){
 
 function iniciarDictado(){
   if(!MotorVoz) return;
+  // Nos aseguramos de que no haya ninguna síntesis de voz activa (eco/feedback
+  // audible) — esta app nunca usó texto-a-voz, pero lo cancelamos por si el
+  // propio dispositivo tuviera algo en curso.
+  if(window.speechSynthesis) window.speechSynthesis.cancel();
+
   const textarea = document.getElementById('f-texto');
   textoAntesDeDictar = textarea.value ? textarea.value.replace(/\s+$/,'') + ' ' : '';
 
@@ -1010,15 +1073,14 @@ function iniciarDictado(){
     } else if(e.error !== 'no-speech' && e.error !== 'aborted'){
       mostrarToast('No se pudo usar el dictado (' + e.error + ').', true);
     }
-    if(e.error !== 'no-speech') detenerDictado();
   };
 
+  // Auto-stop por silencio: dejamos que el propio navegador cierre la sesión
+  // al detectar una pausa prolongada, sin reiniciarla — así el dictado se
+  // detiene solo en vez de seguir escuchando indefinidamente.
   reconocimiento.onend = () => {
-    // Chrome a veces corta la sesión sola tras un silencio largo;
-    // si el usuario no pidió detenerlo, se reinicia automáticamente.
-    if(dictando){
-      try{ reconocimiento.start(); } catch(err){ detenerDictado(); }
-    }
+    dictando = false;
+    actualizarBotonDictado();
   };
 
   try{
@@ -1044,6 +1106,143 @@ function actualizarBotonDictado(){
   btn.classList.toggle('grabando', dictando);
   btn.innerHTML = dictando ? '⏹ Detener' : '🎤 Dictar';
 }
+
+/* ----------------------------------------------------------------
+   PASO 7C — GRABACIÓN DE VIDEO EN VIVO (cámara del dispositivo)
+   Usa navigator.mediaDevices.getUserMedia + MediaRecorder, ambas
+   APIs nativas del navegador. El panel de grabación se abre encima
+   del editor; al cerrarse (por cualquier vía) siempre se apaga la
+   cámara con stream.getTracks().forEach(t => t.stop()).
+   ---------------------------------------------------------------- */
+let streamActivo = null;
+let grabadora = null;
+let fragmentosVideo = [];
+let blobGrabado = null;
+let idxRecursoGrabando = null;
+
+function abrirGrabador(idx){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined'){
+    mostrarToast('Este navegador no soporta grabar video aquí.', true);
+    return;
+  }
+  idxRecursoGrabando = idx;
+  blobGrabado = null;
+  fragmentosVideo = [];
+
+  const videoVivo = document.getElementById('video-preview-vivo');
+  const videoGrabado = document.getElementById('video-preview-grabado');
+  videoGrabado.pause();
+  videoGrabado.removeAttribute('src');
+  videoGrabado.style.display = 'none';
+  videoVivo.style.display = 'block';
+
+  document.getElementById('btn-grabar-iniciar').style.display = 'inline-flex';
+  document.getElementById('btn-grabar-detener').style.display = 'none';
+  document.getElementById('btn-grabar-usar').style.display = 'none';
+  document.getElementById('btn-grabar-reiniciar').style.display = 'none';
+  document.getElementById('grabador-estado').textContent = 'Toca «Iniciar» para pedir permiso de cámara.';
+
+  document.getElementById('overlay-grabador').classList.add('show');
+  document.getElementById('panel-grabador').classList.add('show');
+}
+
+async function iniciarCamara(){
+  try{
+    streamActivo = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+  } catch(e){
+    document.getElementById('grabador-estado').textContent = 'No se pudo acceder a la cámara o el micrófono (revisa permisos).';
+    return;
+  }
+
+  const videoVivo = document.getElementById('video-preview-vivo');
+  videoVivo.srcObject = streamActivo;
+
+  fragmentosVideo = [];
+  const tipoPreferido = 'video/webm;codecs=vp9,opus';
+  const tipoMime = (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(tipoPreferido))
+    ? tipoPreferido
+    : ((typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported('video/webm')) ? 'video/webm' : '');
+  grabadora = tipoMime ? new MediaRecorder(streamActivo, { mimeType: tipoMime }) : new MediaRecorder(streamActivo);
+
+  grabadora.ondataavailable = (e) => { if(e.data && e.data.size) fragmentosVideo.push(e.data); };
+  grabadora.onstop = () => {
+    blobGrabado = new Blob(fragmentosVideo, { type: grabadora.mimeType || 'video/webm' });
+    const videoGrabado = document.getElementById('video-preview-grabado');
+    videoGrabado.src = URL.createObjectURL(blobGrabado);
+    videoGrabado.style.display = 'block';
+    videoVivo.style.display = 'none';
+    document.getElementById('btn-grabar-detener').style.display = 'none';
+    document.getElementById('btn-grabar-usar').style.display = 'inline-flex';
+    document.getElementById('btn-grabar-reiniciar').style.display = 'inline-flex';
+    document.getElementById('grabador-estado').textContent = 'Revisa el video. Si te sirve, toca «Usar este video».';
+    detenerCamara();
+  };
+
+  grabadora.start();
+  document.getElementById('btn-grabar-iniciar').style.display = 'none';
+  document.getElementById('btn-grabar-detener').style.display = 'inline-flex';
+  document.getElementById('grabador-estado').textContent = 'Grabando…';
+}
+
+function detenerGrabacion(){
+  if(grabadora && grabadora.state !== 'inactive') grabadora.stop();
+}
+
+function detenerCamara(){
+  if(streamActivo){
+    streamActivo.getTracks().forEach(t => t.stop());
+    streamActivo = null;
+  }
+}
+
+function reiniciarGrabacion(){
+  const videoVivo = document.getElementById('video-preview-vivo');
+  const videoGrabado = document.getElementById('video-preview-grabado');
+  videoGrabado.pause();
+  videoGrabado.style.display = 'none';
+  videoVivo.style.display = 'block';
+  document.getElementById('btn-grabar-usar').style.display = 'none';
+  document.getElementById('btn-grabar-reiniciar').style.display = 'none';
+  document.getElementById('btn-grabar-iniciar').style.display = 'inline-flex';
+  document.getElementById('grabador-estado').textContent = 'Toca «Iniciar» para grabar de nuevo.';
+  blobGrabado = null;
+}
+
+function cerrarGrabador(){
+  detenerCamara();
+  if(grabadora && grabadora.state !== 'inactive'){ try{ grabadora.stop(); } catch(e){} }
+  document.getElementById('overlay-grabador').classList.remove('show');
+  document.getElementById('panel-grabador').classList.remove('show');
+}
+
+function usarVideoGrabado(){
+  if(!blobGrabado || idxRecursoGrabando == null) return;
+  if(blobGrabado.size > LIMITE_VIDEO_BYTES){
+    mostrarToast('El video pesa más de ~3 MB. Grábalo más corto e inténtalo de nuevo.', true);
+    return;
+  }
+  const lector = new FileReader();
+  lector.onload = () => {
+    const r = borradorRecursos[idxRecursoGrabando];
+    if(r){
+      r.data_base64 = lector.result;
+      r.nombre = r.nombre || ('grabacion-' + Date.now() + '.webm');
+      r.formato = 'webm';
+      renderRecursosEditor();
+    }
+    cerrarGrabador();
+    mostrarToast('Video listo — se guarda junto con el apunte');
+  };
+  lector.readAsDataURL(blobGrabado);
+}
+
+document.getElementById('btn-grabar-iniciar').addEventListener('click', iniciarCamara);
+document.getElementById('btn-grabar-detener').addEventListener('click', detenerGrabacion);
+document.getElementById('btn-grabar-usar').addEventListener('click', usarVideoGrabado);
+document.getElementById('btn-grabar-reiniciar').addEventListener('click', reiniciarGrabacion);
+document.getElementById('btn-grabar-cancelar').addEventListener('click', cerrarGrabador);
+document.getElementById('cerrar-grabador').addEventListener('click', cerrarGrabador);
+document.getElementById('overlay-grabador').addEventListener('click', cerrarGrabador);
 
 function renderRecursosEditor(){
   const cont = document.getElementById('recursos-editor');
@@ -1105,6 +1304,14 @@ titulo,texto,sí">${escapeHtml(csv)}</textarea>`;
       <input type="file" data-campo="archivo-doc" data-idx="${i}" style="margin:2px 0 6px; width:100%;">
       <div class="hint">${r.data_base64 ? 'Archivo adjunto guardado — se puede descargar desde la ficha.' : 'Escribiendo nombre y formato ya queda registrado; subir el archivo además guarda su contenido si pesa menos de ~700 KB.'}</div>`;
   }
+  if(r.tipo === 'video'){
+    return `
+      <label class="hint">Video — sube un archivo o grábalo con la cámara</label>
+      <input type="file" accept="video/*" data-campo="archivo-video" data-idx="${i}" style="margin:2px 0 6px; width:100%;">
+      <button type="button" class="btn ghost grabar-video-btn" data-idx="${i}" style="width:100%; margin-bottom:6px;">🎥 Grabar video</button>
+      <div class="hint">${r.data_base64 ? 'Video adjunto guardado.' : (r.nombre ? 'Archivo: ' + escapeHtml(r.nombre) : 'Ningún video adjunto todavía. Máx. ~3 MB — un clip corto.')}</div>
+      ${r.data_base64 ? `<video src="${r.data_base64}" controls playsinline style="width:100%; margin-top:6px; border-radius:var(--radius); background:#000;"></video>` : ''}`;
+  }
   return '';
 }
 
@@ -1152,6 +1359,24 @@ function vincularCamposRecurso(r, i){
     }
     renderRecursosEditor();
   });
+
+  const campoVideo = cont.querySelector('[data-campo="archivo-video"]');
+  if(campoVideo) campoVideo.addEventListener('change', async () => {
+    const file = campoVideo.files[0];
+    if(!file) return;
+    r.nombre = file.name;
+    r.formato = (file.name.split('.').pop()||'').toLowerCase();
+    if(file.size <= LIMITE_VIDEO_BYTES){
+      r.data_base64 = await fileABase64(file);
+    } else {
+      delete r.data_base64;
+      mostrarToast('Ese video pesa más de ~3 MB: solo se guarda el nombre, no el contenido. Prueba grabando un clip corto.', true);
+    }
+    renderRecursosEditor();
+  });
+
+  const btnGrabar = cont.querySelector('.grabar-video-btn');
+  if(btnGrabar) btnGrabar.addEventListener('click', () => abrirGrabador(i));
 }
 
 function guardarApunte(ev){
@@ -1200,6 +1425,7 @@ function abrirPanel(idPanel){
 }
 function cerrarPaneles(){
   detenerDictado(); // no dejar el micrófono escuchando si se cierra el panel
+  cerrarGrabador();  // y tampoco la cámara, si por lo que sea seguía abierta
   document.getElementById('overlay').classList.remove('show');
   ['panel-vista','panel-editor'].forEach(id => {
     document.getElementById(id).classList.remove('show');

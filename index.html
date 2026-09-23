@@ -927,10 +927,9 @@ function abrirVista(id){
     btn.addEventListener('click', () => descargarDocumento(docsConDatos[i]));
   });
 
-  // botón "Vista previa" de cada PDF: la primera vez que se abre, convierte
-  // el data: URI a un blob: URL — Chrome en Android muestra el contenido en
-  // crudo en vez del PDF cuando el iframe apunta directo a un data: URI, pero
-  // sí lo renderiza bien desde un blob: URL.
+  // botón "Vista previa" de cada PDF: dibuja el documento con pdf.js dentro
+  // del propio panel (canvas), en vez de pedirle al navegador que lo abra —
+  // así evitamos que Android lo mande a su manejador de archivos.
   const pdfsConDatos = (a.recursos||[]).filter(r => r.tipo === 'documento' && r.data_base64 && (r.formato||'').toLowerCase() === 'pdf');
   document.getElementById('vista-body').querySelectorAll('.ver-pdf-btn').forEach((btn, i) => {
     const recurso = pdfsConDatos[i];
@@ -943,14 +942,12 @@ function abrirVista(id){
         btn.textContent = 'Vista previa';
         return;
       }
-      const iframe = cont.querySelector('iframe');
-      if(recurso && !iframe.dataset.cargado){
-        const url = URL.createObjectURL(dataUriABlob(recurso.data_base64));
-        iframe.src = url;
-        iframe.dataset.cargado = '1';
-      }
       cont.style.display = 'block';
       btn.textContent = 'Ocultar vista previa';
+      if(recurso && !cont.dataset.cargado){
+        cont.dataset.cargado = '1';
+        mostrarPdfEnPanel(recurso.data_base64, cont);
+      }
     });
   });
 
@@ -966,6 +963,66 @@ function dataUriABlob(dataUri){
   const bytes = new Uint8Array(binario.length);
   for(let i=0; i<binario.length; i++) bytes[i] = binario.charCodeAt(i);
   return new Blob([bytes], { type: mime });
+}
+
+/* Igual que dataUriABlob, pero devuelve los bytes crudos (Uint8Array) en vez
+   de un Blob — es lo que pide pdf.js para abrir el documento. */
+function dataUriABytes(dataUri){
+  const base64 = dataUri.split(',')[1] || '';
+  const binario = atob(base64);
+  const bytes = new Uint8Array(binario.length);
+  for(let i=0; i<binario.length; i++) bytes[i] = binario.charCodeAt(i);
+  return bytes;
+}
+
+/* ----------------------------------------------------------------
+   VISTA PREVIA DE PDF — dibujado real con pdf.js
+   Chrome para Android no tiene un visor de PDF embebido dentro de la
+   página (a diferencia de Chrome de escritorio): un <iframe> apuntando
+   a un PDF, sea data: o blob:, lo manda al manejador de archivos del
+   sistema en vez de mostrarlo ahí. La única forma confiable de verlo
+   dentro de la ficha es dibujarlo nosotros mismos en un <canvas>.
+   pdf.js se carga una sola vez, bajo demanda (nunca si no se usa).
+   ---------------------------------------------------------------- */
+let pdfJsListo = null;
+function cargarPdfJs(){
+  if(pdfJsListo) return pdfJsListo;
+  pdfJsListo = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    script.onload = () => {
+      try{
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        resolve(window.pdfjsLib);
+      } catch(e){ reject(e); }
+    };
+    script.onerror = () => reject(new Error('no se pudo cargar pdf.js'));
+    document.head.appendChild(script);
+  });
+  return pdfJsListo;
+}
+
+async function mostrarPdfEnPanel(dataUri, contenedor){
+  contenedor.innerHTML = '<span class="hint">Cargando vista previa…</span>';
+  try{
+    const pdfjsLib = await cargarPdfJs();
+    const pdf = await pdfjsLib.getDocument({ data: dataUriABytes(dataUri) }).promise;
+    contenedor.innerHTML = '';
+    const anchoDisponible = contenedor.clientWidth || 300;
+    for(let n = 1; n <= pdf.numPages; n++){
+      const pagina = await pdf.getPage(n);
+      const escala = anchoDisponible / pagina.getViewport({ scale:1 }).width;
+      const viewport = pagina.getViewport({ scale: Math.max(escala, 0.5) });
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.cssText = 'width:100%; display:block; margin-bottom:8px; border-radius:var(--radius-sm); border:1px solid var(--line-soft);';
+      contenedor.appendChild(canvas);
+      await pagina.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    }
+  } catch(e){
+    contenedor.innerHTML = '<span class="hint">No se pudo mostrar la vista previa aquí. Usa «Descargar» para verlo.</span>';
+  }
 }
 
 async function descargarDocumento(r){
@@ -1040,7 +1097,7 @@ function renderRecursoVista(r){
           <strong style="font-weight:700; color:var(--ink);">${escapeHtml(r.nombre||'archivo')}</strong>
           ${descarga}
         </div>
-        ${esPdf ? `<div class="pdf-preview-cont" style="display:none; margin-top:8px;"><iframe style="width:100%; height:60vh; border:1px solid var(--line-soft); border-radius:var(--radius);"></iframe></div>` : ''}
+        ${esPdf ? `<div class="pdf-preview-cont" style="display:none; margin-top:8px; max-height:70vh; overflow-y:auto;"></div>` : ''}
       </div>`;
   }
   return '';

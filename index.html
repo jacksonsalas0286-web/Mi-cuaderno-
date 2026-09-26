@@ -6,6 +6,73 @@
 <title>Cuaderno técnico · Apuntes</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- ============================================================
+     FIREBASE STORAGE — sube los PDF y videos a la nube en vez de
+     guardarlos en Base64 en el navegador. Reemplaza los valores de
+     firebaseConfig por los tuyos (Consola de Firebase → engranaje ⚙️
+     → Configuración del proyecto → General → "Tus apps" → app Web).
+     ============================================================ -->
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js';
+  import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject }
+    from 'https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js';
+
+  // === REEMPLAZA ESTO con tu propio firebaseConfig ===
+  const firebaseConfig = {
+    apiKey: "TU_API_KEY",
+    authDomain: "TU_PROYECTO.firebaseapp.com",
+    projectId: "TU_PROYECTO",
+    storageBucket: "TU_PROYECTO.appspot.com",
+    messagingSenderId: "TU_SENDER_ID",
+    appId: "TU_APP_ID"
+  };
+  // ====================================================
+
+  let storage = null;
+  try{
+    const app = initializeApp(firebaseConfig);
+    storage = getStorage(app);
+  } catch(e){
+    console.error('No se pudo inicializar Firebase:', e);
+  }
+
+  // Puente hacia el script principal (que es JS clásico, no un módulo):
+  // todo lo que el resto de la app necesita de Firebase vive aquí.
+  window.FirebaseSubidas = {
+    disponible: !!storage && firebaseConfig.apiKey !== 'TU_API_KEY',
+
+    // Sube un archivo con progreso. onProgreso(pct) se llama en cada avance.
+    // Devuelve { url, ruta } al terminar.
+    subir(archivo, carpeta, onProgreso){
+      return new Promise((resolve, reject) => {
+        if(!storage){ reject(new Error('Firebase no está configurado')); return; }
+        const nombreSeguro = Date.now() + '-' + archivo.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const referencia = ref(storage, carpeta + '/' + nombreSeguro);
+        const tarea = uploadBytesResumable(referencia, archivo);
+        tarea.on('state_changed',
+          (snap) => {
+            if(onProgreso) onProgreso(Math.round((snap.bytesTransferred / snap.totalBytes) * 100));
+          },
+          (error) => reject(error),
+          async () => {
+            try{
+              const url = await getDownloadURL(tarea.snapshot.ref);
+              resolve({ url, ruta: referencia.fullPath });
+            } catch(e){ reject(e); }
+          }
+        );
+      });
+    },
+
+    // Borra un archivo ya subido (limpieza al eliminar un recurso o apunte).
+    async borrar(ruta){
+      if(!storage || !ruta) return;
+      try{ await deleteObject(ref(storage, ruta)); } catch(e){ /* si ya no existe, no pasa nada */ }
+    }
+  };
+</script>
+
 <style>
   /* ============================================================
      1. TOKENS — paleta "premium dark" con acentos neón y vidrio
@@ -379,6 +446,14 @@
   .res-editor-block .rm{
     position:absolute; top:8px; right:8px;
   }
+  .upload-progreso{
+    height:6px; border-radius:999px; background:rgba(148,163,184,.18);
+    overflow:hidden; margin:6px 0;
+  }
+  .upload-progreso-fill{
+    height:100%; background:var(--grad-brand); border-radius:999px;
+    transition:width .2s ease;
+  }
   .add-res-row{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px; }
   .add-res-row button{
     border:1px dashed var(--line); background:transparent; border-radius:var(--radius-pill);
@@ -578,7 +653,6 @@
    ================================================================ */
 const CLAVE = 'apuntes-app-data'; // una sola clave: agrupa apuntes + categorías
 const PALETA = ['teal','amber','rust','navy','plum'];
-const LIMITE_VIDEO_BYTES = 3 * 1024 * 1024; // ~3 MB: localStorage no da para mucho más
 
 let estado = {
   apuntes: [],
@@ -921,16 +995,17 @@ function abrirVista(id){
     });
   });
 
-  // botón "descargar" de cada documento adjunto (mismo orden que se renderizaron)
-  const docsConDatos = (a.recursos||[]).filter(r => r.tipo === 'documento' && r.data_base64);
+  // botón "descargar" de cada documento local antiguo (los de la nube usan un <a> directo, sin JS)
+  const docsConDatos = (a.recursos||[]).filter(r => r.tipo === 'documento' && !r.url_firebase && r.data_base64);
   document.getElementById('vista-body').querySelectorAll('.descargar-doc').forEach((btn, i) => {
     btn.addEventListener('click', () => descargarDocumento(docsConDatos[i]));
   });
 
-  // botón "Vista previa" de cada PDF: dibuja el documento con pdf.js dentro
-  // del propio panel (canvas), en vez de pedirle al navegador que lo abra —
-  // así evitamos que Android lo mande a su manejador de archivos.
-  const pdfsConDatos = (a.recursos||[]).filter(r => r.tipo === 'documento' && r.data_base64 && (r.formato||'').toLowerCase() === 'pdf');
+  // botón "Vista previa" de cada PDF (en la nube o local antiguo): dibuja el
+  // documento con pdf.js dentro del propio panel (canvas), en vez de pedirle
+  // al navegador que lo abra — así evitamos que Android lo mande a su
+  // manejador de archivos.
+  const pdfsConDatos = (a.recursos||[]).filter(r => r.tipo === 'documento' && (r.url_firebase || r.data_base64) && (r.formato||'').toLowerCase() === 'pdf');
   document.getElementById('vista-body').querySelectorAll('.ver-pdf-btn').forEach((btn, i) => {
     const recurso = pdfsConDatos[i];
     btn.addEventListener('click', () => {
@@ -946,7 +1021,7 @@ function abrirVista(id){
       btn.textContent = 'Ocultar vista previa';
       if(recurso && !cont.dataset.cargado){
         cont.dataset.cargado = '1';
-        mostrarPdfEnPanel(recurso.data_base64, cont);
+        mostrarPdfEnPanel(recurso, cont);
       }
     });
   });
@@ -1002,11 +1077,14 @@ function cargarPdfJs(){
   return pdfJsListo;
 }
 
-async function mostrarPdfEnPanel(dataUri, contenedor){
+async function mostrarPdfEnPanel(recurso, contenedor){
   contenedor.innerHTML = '<span class="hint">Cargando vista previa…</span>';
   try{
     const pdfjsLib = await cargarPdfJs();
-    const pdf = await pdfjsLib.getDocument({ data: dataUriABytes(dataUri) }).promise;
+    // pdf.js puede leer directo desde una URL (PDF subido a GitHub, etc.) o,
+    // para apuntes antiguos, desde los bytes guardados en local.
+    const origen = recurso.url_firebase ? { url: recurso.url_firebase } : { data: dataUriABytes(recurso.data_base64) };
+    const pdf = await pdfjsLib.getDocument(origen).promise;
     contenedor.innerHTML = '';
     const anchoDisponible = contenedor.clientWidth || 300;
     for(let n = 1; n <= pdf.numPages; n++){
@@ -1021,7 +1099,7 @@ async function mostrarPdfEnPanel(dataUri, contenedor){
       await pagina.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
     }
   } catch(e){
-    contenedor.innerHTML = '<span class="hint">No se pudo mostrar la vista previa aquí. Usa «Descargar» para verlo.</span>';
+    contenedor.innerHTML = '<span class="hint">No se pudo mostrar la vista previa aquí. Usa «Abrir»/«Descargar» para verlo.</span>';
   }
 }
 
@@ -1062,10 +1140,11 @@ function renderRecursoVista(r){
       </div>`;
   }
   if(r.tipo === 'video'){
-    return r.data_base64 ? `
+    const fuente = r.url_firebase || r.data_base64;
+    return fuente ? `
       <div class="res-block">
-        <div class="res-label"><span>Video</span></div>
-        <video src="${r.data_base64}" controls playsinline style="width:100%; border-radius:var(--radius); background:#000;"></video>
+        <div class="res-label"><span>Video</span>${r.url_firebase ? '<span class="hint">en la nube</span>' : ''}</div>
+        <video src="${fuente}" controls playsinline style="width:100%; border-radius:var(--radius); background:#000;"></video>
       </div>` : `
       <div class="res-block">
         <div class="res-label"><span>Video</span></div>
@@ -1082,10 +1161,14 @@ function renderRecursoVista(r){
       </div>`;
   }
   if(r.tipo === 'documento'){
-    const esPdf = r.data_base64 && (r.formato||'').toLowerCase() === 'pdf';
-    const descarga = r.data_base64
-      ? `<button type="button" class="descargar-doc" style="margin-left:auto; border:none; background:transparent; color:var(--teal); font-size:12px; cursor:pointer; text-decoration:underline;">Descargar</button>`
-      : `<span style="margin-left:auto; color:var(--ink-soft); font-size:11.5px;">No almacenado (archivo grande)</span>`;
+    const enNube = !!r.url_firebase;
+    const esLocal = !enNube && !!r.data_base64;
+    const esPdf = (r.formato||'').toLowerCase() === 'pdf' && (enNube || esLocal);
+    const accion = enNube
+      ? `<a href="${r.url_firebase}" target="_blank" rel="noopener" style="margin-left:auto; color:var(--teal); font-size:12px; text-decoration:underline;">Abrir</a>`
+      : esLocal
+        ? `<button type="button" class="descargar-doc" style="margin-left:auto; border:none; background:transparent; color:var(--teal); font-size:12px; cursor:pointer; text-decoration:underline;">Descargar</button>`
+        : `<span style="margin-left:auto; color:var(--ink-soft); font-size:11.5px;">No almacenado</span>`;
     return `
       <div class="res-block">
         <div class="res-label">
@@ -1095,7 +1178,7 @@ function renderRecursoVista(r){
         <div class="doc-chip">
           <span class="ext">${escapeHtml((r.formato||'').toUpperCase())}</span>
           <strong style="font-weight:700; color:var(--ink);">${escapeHtml(r.nombre||'archivo')}</strong>
-          ${descarga}
+          ${accion}
         </div>
         ${esPdf ? `<div class="pdf-preview-cont" style="display:none; margin-top:8px; max-height:70vh; overflow-y:auto;"></div>` : ''}
       </div>`;
@@ -1328,23 +1411,12 @@ function cerrarGrabador(){
 
 function usarVideoGrabado(){
   if(!blobGrabado || idxRecursoGrabando == null) return;
-  if(blobGrabado.size > LIMITE_VIDEO_BYTES){
-    mostrarToast('El video pesa más de ~3 MB. Grábalo más corto e inténtalo de nuevo.', true);
-    return;
-  }
-  const lector = new FileReader();
-  lector.onload = () => {
-    const r = borradorRecursos[idxRecursoGrabando];
-    if(r){
-      r.data_base64 = lector.result;
-      r.nombre = r.nombre || ('grabacion-' + Date.now() + '.webm');
-      r.formato = 'webm';
-      renderRecursosEditor();
-    }
-    cerrarGrabador();
-    mostrarToast('Video listo — se guarda junto con el apunte');
-  };
-  lector.readAsDataURL(blobGrabado);
+  const r = borradorRecursos[idxRecursoGrabando];
+  if(!r) return;
+  const nombreArchivo = 'grabacion-' + Date.now() + '.webm';
+  const archivo = new File([blobGrabado], nombreArchivo, { type: blobGrabado.type || 'video/webm' });
+  cerrarGrabador();
+  subirRecursoAFirebase(r, archivo, 'videos');
 }
 
 document.getElementById('btn-grabar-iniciar').addEventListener('click', iniciarCamara);
@@ -1375,10 +1447,44 @@ function renderRecursosEditor(){
 
   cont.querySelectorAll('[data-rm]').forEach(btn => {
     btn.addEventListener('click', () => {
-      borradorRecursos.splice(Number(btn.dataset.rm), 1);
+      const [quitado] = borradorRecursos.splice(Number(btn.dataset.rm), 1);
+      if(quitado && quitado.ruta_firebase && window.FirebaseSubidas) window.FirebaseSubidas.borrar(quitado.ruta_firebase);
       renderRecursosEditor();
     });
   });
+}
+
+/* Sube un archivo (documento o video) a Firebase Storage, actualizando el
+   propio objeto del recurso con el progreso y el resultado — así el editor
+   se puede volver a dibujar en cualquier momento y refleja el estado real. */
+async function subirRecursoAFirebase(r, file, carpeta){
+  if(!window.FirebaseSubidas || !window.FirebaseSubidas.disponible){
+    mostrarToast('Subida automática no disponible. Sube el archivo a tu repositorio de GitHub y pega el enlace.', true);
+    return;
+  }
+  r.subiendo = true;
+  r.progreso = 0;
+  r.error_subida = null;
+  renderRecursosEditor();
+
+  try{
+    const { url, ruta } = await window.FirebaseSubidas.subir(file, carpeta, (pct) => {
+      r.progreso = pct;
+      const relleno = document.querySelector('.res-editor-block .upload-progreso-fill');
+      if(relleno) relleno.style.width = pct + '%'; // progreso fluido sin re-render completo
+    });
+    r.url_firebase = url;
+    r.ruta_firebase = ruta;
+    r.nombre = file.name;
+    r.formato = (file.name.split('.').pop() || '').toLowerCase();
+    delete r.data_base64; // ya no hace falta guardar el contenido en local
+  } catch(e){
+    r.error_subida = (e && e.message) || 'error desconocido';
+    mostrarToast('No se pudo subir el archivo a la nube.', true);
+  } finally {
+    r.subiendo = false;
+    renderRecursosEditor();
+  }
 }
 
 function formularioRecurso(r, i){
@@ -1406,22 +1512,45 @@ function formularioRecurso(r, i){
 titulo,texto,sí">${escapeHtml(csv)}</textarea>`;
   }
   if(r.tipo === 'documento'){
+    const subidaAuto = window.FirebaseSubidas && window.FirebaseSubidas.disponible;
+    const estado = r.subiendo
+      ? `Subiendo… ${r.progreso||0}%`
+      : r.url_firebase
+        ? 'Archivo enlazado — se puede ver y descargar desde la ficha.'
+        : r.data_base64
+          ? 'Archivo guardado localmente (versión anterior).'
+          : r.error_subida
+            ? 'No se pudo subir: ' + escapeHtml(r.error_subida)
+            : 'Ningún archivo adjunto todavía.';
     return `
-      <label class="hint">Documento — nombre y formato (funciona sin subir archivo)</label>
-      <div class="field-row" style="margin-bottom:6px;">
-        <input type="text" data-campo="nombre" data-idx="${i}" placeholder="nombre-del-archivo.pdf" value="${escapeHtml(r.nombre||'')}" style="flex:2; padding:7px 8px; border:1px solid var(--line); border-radius:var(--radius);">
-        <input type="text" data-campo="formato" data-idx="${i}" placeholder="pdf" value="${escapeHtml(r.formato||'')}" style="flex:1; padding:7px 8px; border:1px solid var(--line); border-radius:var(--radius);">
-      </div>
-      <input type="file" data-campo="archivo-doc" data-idx="${i}" style="margin:2px 0 6px; width:100%;">
-      <div class="hint">${r.data_base64 ? 'Archivo adjunto guardado — se puede descargar desde la ficha.' : 'Escribiendo nombre y formato ya queda registrado; subir el archivo además guarda su contenido si pesa menos de ~700 KB.'}</div>`;
+      <label class="hint">Documento — pega el enlace del archivo (súbelo antes a tu repositorio de GitHub, carpeta «archivos»)</label>
+      <input type="text" data-campo="url_firebase" data-idx="${i}" placeholder="https://tu-usuario.github.io/tu-repo/archivos/nombre.pdf" value="${r.url_firebase && !r.subiendo ? escapeHtml(r.url_firebase) : ''}" style="width:100%; padding:7px 8px; border:1px solid var(--line); border-radius:var(--radius); margin-bottom:6px;">
+      ${subidaAuto ? `<input type="file" accept="application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.txt" data-campo="archivo-doc" data-idx="${i}" style="margin:2px 0 6px; width:100%;" ${r.subiendo ? 'disabled':''}>` : ''}
+      ${r.subiendo ? `<div class="upload-progreso"><div class="upload-progreso-fill" style="width:${r.progreso||0}%;"></div></div>` : ''}
+      <div class="hint">${estado}</div>`;
   }
   if(r.tipo === 'video'){
+    const subidaAuto = window.FirebaseSubidas && window.FirebaseSubidas.disponible;
+    const estado = r.subiendo
+      ? `Subiendo… ${r.progreso||0}%`
+      : r.url_firebase
+        ? 'Video enlazado — listo para reproducir desde la ficha.'
+        : r.data_base64
+          ? 'Video guardado localmente (versión anterior).'
+          : r.error_subida
+            ? 'No se pudo subir: ' + escapeHtml(r.error_subida)
+            : 'Ningún video adjunto todavía.';
+    const previsualizacion = !r.subiendo && (r.url_firebase || r.data_base64)
+      ? `<video src="${r.url_firebase || r.data_base64}" controls playsinline style="width:100%; margin-top:6px; border-radius:var(--radius); background:#000;"></video>`
+      : '';
     return `
-      <label class="hint">Video — sube un archivo o grábalo con la cámara</label>
-      <input type="file" accept="video/*" data-campo="archivo-video" data-idx="${i}" style="margin:2px 0 6px; width:100%;">
-      <button type="button" class="btn ghost grabar-video-btn" data-idx="${i}" style="width:100%; margin-bottom:6px;">🎥 Grabar video</button>
-      <div class="hint">${r.data_base64 ? 'Video adjunto guardado.' : (r.nombre ? 'Archivo: ' + escapeHtml(r.nombre) : 'Ningún video adjunto todavía. Máx. ~3 MB — un clip corto.')}</div>
-      ${r.data_base64 ? `<video src="${r.data_base64}" controls playsinline style="width:100%; margin-top:6px; border-radius:var(--radius); background:#000;"></video>` : ''}`;
+      <label class="hint">Video — pega el enlace (súbelo antes a tu repositorio de GitHub, carpeta «archivos»; máx. ~25 MB por archivo ahí)</label>
+      <input type="text" data-campo="url_firebase" data-idx="${i}" placeholder="https://tu-usuario.github.io/tu-repo/archivos/nombre.mp4" value="${r.url_firebase && !r.subiendo ? escapeHtml(r.url_firebase) : ''}" style="width:100%; padding:7px 8px; border:1px solid var(--line); border-radius:var(--radius); margin-bottom:6px;">
+      ${subidaAuto ? `<input type="file" accept="video/*" data-campo="archivo-video" data-idx="${i}" style="margin:2px 0 6px; width:100%;" ${r.subiendo ? 'disabled':''}>` : ''}
+      <button type="button" class="btn ghost grabar-video-btn" data-idx="${i}" style="width:100%; margin-bottom:6px;" ${(r.subiendo || !subidaAuto) ? 'disabled':''} title="${subidaAuto ? '' : 'Necesita subida automática (Firebase de pago); mientras tanto graba con la cámara del teléfono y sube ese archivo a GitHub'}">🎥 Grabar video</button>
+      ${r.subiendo ? `<div class="upload-progreso"><div class="upload-progreso-fill" style="width:${r.progreso||0}%;"></div></div>` : ''}
+      <div class="hint">${estado}</div>
+      ${previsualizacion}`;
   }
   return '';
 }
@@ -1434,7 +1563,7 @@ function vincularCamposRecurso(r, i){
   // así ningún tipo de recurso depende de que un selector de archivo se abra.
   cont.querySelectorAll('[data-campo]').forEach(el => {
     const campo = el.dataset.campo;
-    if(campo === 'archivo-imagen' || campo === 'archivo-doc') return; // estos se atan aparte, más abajo
+    if(campo === 'archivo-imagen' || campo === 'archivo-doc' || campo === 'archivo-video') return; // estos se atan aparte, más abajo
     const evento = el.tagName === 'SELECT' ? 'change' : 'input';
     el.addEventListener(evento, () => {
       if(campo === 'csv'){
@@ -1457,33 +1586,17 @@ function vincularCamposRecurso(r, i){
   });
 
   const campoDoc = cont.querySelector('[data-campo="archivo-doc"]');
-  if(campoDoc) campoDoc.addEventListener('change', async () => {
+  if(campoDoc) campoDoc.addEventListener('change', () => {
     const file = campoDoc.files[0];
     if(!file) return;
-    r.nombre = file.name;
-    r.formato = (file.name.split('.').pop()||'').toLowerCase();
-    if(file.size <= 700*1024){
-      r.data_base64 = await fileABase64(file);
-    } else {
-      delete r.data_base64;
-      mostrarToast('El archivo es grande: solo se guarda el nombre, no el contenido.', true);
-    }
-    renderRecursosEditor();
+    subirRecursoAFirebase(r, file, 'documentos');
   });
 
   const campoVideo = cont.querySelector('[data-campo="archivo-video"]');
-  if(campoVideo) campoVideo.addEventListener('change', async () => {
+  if(campoVideo) campoVideo.addEventListener('change', () => {
     const file = campoVideo.files[0];
     if(!file) return;
-    r.nombre = file.name;
-    r.formato = (file.name.split('.').pop()||'').toLowerCase();
-    if(file.size <= LIMITE_VIDEO_BYTES){
-      r.data_base64 = await fileABase64(file);
-    } else {
-      delete r.data_base64;
-      mostrarToast('Ese video pesa más de ~3 MB: solo se guarda el nombre, no el contenido. Prueba grabando un clip corto.', true);
-    }
-    renderRecursosEditor();
+    subirRecursoAFirebase(r, file, 'videos');
   });
 
   const btnGrabar = cont.querySelector('.grabar-video-btn');
@@ -1494,6 +1607,16 @@ function guardarApunte(ev){
   ev.preventDefault();
   const titulo = document.getElementById('f-titulo').value.trim();
   if(!titulo){ mostrarToast('El título es obligatorio', true); return; }
+  if(borradorRecursos.some(r => r.subiendo)){
+    mostrarToast('Espera a que termine de subirse el archivo antes de guardar.', true);
+    return;
+  }
+
+  // Se descartan los campos transitorios de subida (nunca deben quedar guardados)
+  const recursosLimpios = borradorRecursos.map(r => {
+    const { subiendo, progreso, error_subida, ...limpio } = r;
+    return limpio;
+  });
 
   const apunte = {
     id: idEnEdicion || nuevoId(),
@@ -1501,7 +1624,7 @@ function guardarApunte(ev){
     categoria: document.getElementById('f-categoria').value,
     fecha: document.getElementById('f-fecha').value || new Date().toISOString().slice(0,10),
     contenido_texto: document.getElementById('f-texto').value.trim(),
-    recursos: borradorRecursos
+    recursos: recursosLimpios
   };
 
   const idx = estado.apuntes.findIndex(a => a.id === apunte.id);
@@ -1518,6 +1641,10 @@ function eliminarApunteActual(){
   if(idEnVista == null) return;
   if(!confirm('¿Eliminar este apunte? Esta acción no se puede deshacer.')) return;
   const idAEliminar = idEnVista;
+  const apunte = estado.apuntes.find(a => a.id === idAEliminar);
+  if(apunte && window.FirebaseSubidas){
+    (apunte.recursos||[]).forEach(r => { if(r.ruta_firebase) window.FirebaseSubidas.borrar(r.ruta_firebase); });
+  }
   estado.apuntes = estado.apuntes.filter(a => a.id !== idAEliminar);
   eliminarApunteEnStorage(idAEliminar).then(() => {
     mostrarToast('Apunte eliminado');

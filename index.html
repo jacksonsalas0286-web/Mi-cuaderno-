@@ -1050,6 +1050,32 @@ function dataUriABytes(dataUri){
   return bytes;
 }
 
+/* Saca el nombre de archivo a partir de una URL (lo que va después de la
+   última "/", sin parámetros ni # al final). */
+function nombreDesdeUrl(url){
+  if(!url) return '';
+  try{
+    const limpio = url.split('?')[0].split('#')[0];
+    const partes = limpio.split('/').filter(Boolean);
+    const ultimo = partes[partes.length-1] || '';
+    return decodeURIComponent(ultimo);
+  } catch(e){ return ''; }
+}
+
+/* Si pegaron el enlace de la vista de GitHub (github.com/.../blob/...),
+   lo convierte al enlace del archivo real (raw.githubusercontent.com) —
+   el de github.com muestra el archivo envuelto en la interfaz del sitio,
+   no el archivo en sí. */
+function normalizarUrlGitHub(url){
+  if(!url) return url;
+  const m = url.match(/^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+)$/);
+  if(m){
+    const [, usuario, repo, rama, ruta] = m;
+    return `https://raw.githubusercontent.com/${usuario}/${repo}/${rama}/${ruta}`;
+  }
+  return url;
+}
+
 /* ----------------------------------------------------------------
    VISTA PREVIA DE PDF — dibujado real con pdf.js
    Chrome para Android no tiene un visor de PDF embebido dentro de la
@@ -1148,7 +1174,7 @@ function renderRecursoVista(r){
       </div>` : `
       <div class="res-block">
         <div class="res-label"><span>Video</span></div>
-        <div class="doc-chip"><span class="ext">${escapeHtml((r.formato||'').toUpperCase())}</span><strong style="font-weight:700; color:var(--ink);">${escapeHtml(r.nombre||'sin guardar')}</strong></div>
+        <div class="doc-chip"><span class="ext">${escapeHtml((r.formato||'').toUpperCase())}</span><strong style="font-weight:700; color:var(--ink);">${escapeHtml(r.nombre || nombreDesdeUrl(r.url_firebase) || 'sin guardar')}</strong></div>
       </div>`;
   }
   if(r.tipo === 'tabla'){
@@ -1163,7 +1189,9 @@ function renderRecursoVista(r){
   if(r.tipo === 'documento'){
     const enNube = !!r.url_firebase;
     const esLocal = !enNube && !!r.data_base64;
-    const esPdf = (r.formato||'').toLowerCase() === 'pdf' && (enNube || esLocal);
+    const nombreMostrado = r.nombre || nombreDesdeUrl(r.url_firebase) || 'archivo';
+    const formatoEfectivo = (r.formato || nombreMostrado.split('.').pop() || '').toLowerCase();
+    const esPdf = formatoEfectivo === 'pdf' && (enNube || esLocal);
     const accion = enNube
       ? `<a href="${r.url_firebase}" target="_blank" rel="noopener" style="margin-left:auto; color:var(--teal); font-size:12px; text-decoration:underline;">Abrir</a>`
       : esLocal
@@ -1176,8 +1204,8 @@ function renderRecursoVista(r){
           ${esPdf ? `<button type="button" class="ver-pdf-btn" style="border:none; background:transparent; color:var(--teal); font-size:12px; cursor:pointer; text-decoration:underline;">Vista previa</button>` : ''}
         </div>
         <div class="doc-chip">
-          <span class="ext">${escapeHtml((r.formato||'').toUpperCase())}</span>
-          <strong style="font-weight:700; color:var(--ink);">${escapeHtml(r.nombre||'archivo')}</strong>
+          <span class="ext">${escapeHtml(formatoEfectivo.toUpperCase())}</span>
+          <strong style="font-weight:700; color:var(--ink);">${escapeHtml(nombreMostrado)}</strong>
           ${accion}
         </div>
         ${esPdf ? `<div class="pdf-preview-cont" style="display:none; margin-top:8px; max-height:70vh; overflow-y:auto;"></div>` : ''}
@@ -1429,6 +1457,13 @@ document.getElementById('overlay-grabador').addEventListener('click', cerrarGrab
 
 function renderRecursosEditor(){
   const cont = document.getElementById('recursos-editor');
+  // Repara apuntes antiguos que se guardaron con enlace pero sin nombre/formato.
+  borradorRecursos.forEach(r => {
+    if((r.tipo === 'documento' || r.tipo === 'video') && r.url_firebase && !r.nombre){
+      const nombre = nombreDesdeUrl(r.url_firebase);
+      if(nombre){ r.nombre = nombre; r.formato = (nombre.split('.').pop()||'').toLowerCase(); }
+    }
+  });
   if(borradorRecursos.length === 0){
     cont.innerHTML = `<p class="hint" style="margin:0 0 12px;">Todavía no hay recursos. Añade uno con los botones de abajo.</p>`;
     return;
@@ -1516,7 +1551,7 @@ titulo,texto,sí">${escapeHtml(csv)}</textarea>`;
     const estado = r.subiendo
       ? `Subiendo… ${r.progreso||0}%`
       : r.url_firebase
-        ? 'Archivo enlazado — se puede ver y descargar desde la ficha.'
+        ? `Enlazado como «${escapeHtml(r.nombre || nombreDesdeUrl(r.url_firebase))}» — se puede ver y descargar desde la ficha.`
         : r.data_base64
           ? 'Archivo guardado localmente (versión anterior).'
           : r.error_subida
@@ -1534,7 +1569,7 @@ titulo,texto,sí">${escapeHtml(csv)}</textarea>`;
     const estado = r.subiendo
       ? `Subiendo… ${r.progreso||0}%`
       : r.url_firebase
-        ? 'Video enlazado — listo para reproducir desde la ficha.'
+        ? `Enlazado como «${escapeHtml(r.nombre || nombreDesdeUrl(r.url_firebase))}» — listo para reproducir desde la ficha.`
         : r.data_base64
           ? 'Video guardado localmente (versión anterior).'
           : r.error_subida
@@ -1570,10 +1605,31 @@ function vincularCamposRecurso(r, i){
         const lineas = el.value.split('\n').filter(l => l.trim() !== '');
         r.headers = lineas[0] ? lineas[0].split(',').map(s=>s.trim()) : [];
         r.rows = lineas.slice(1).map(l => l.split(',').map(s=>s.trim()));
+      } else if(campo === 'url_firebase'){
+        r.url_firebase = el.value.trim();
+        const nombre = nombreDesdeUrl(r.url_firebase);
+        if(nombre){
+          r.nombre = nombre;
+          r.formato = (nombre.split('.').pop() || '').toLowerCase();
+        }
       } else {
         r[campo] = el.value;
       }
     });
+
+    // Al salir del campo de enlace (ya pegado/escrito), corrige de una vez si
+    // es un link de la página de GitHub en vez del archivo real.
+    if(campo === 'url_firebase'){
+      el.addEventListener('blur', () => {
+        const corregido = normalizarUrlGitHub(r.url_firebase);
+        if(corregido !== r.url_firebase){
+          r.url_firebase = corregido;
+          r.nombre = nombreDesdeUrl(corregido) || r.nombre;
+          r.formato = (r.nombre.split('.').pop() || '').toLowerCase();
+          renderRecursosEditor();
+        }
+      });
+    }
   });
 
   const campoImg = cont.querySelector('[data-campo="archivo-imagen"]');

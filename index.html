@@ -1113,16 +1113,21 @@ async function mostrarPdfEnPanel(recurso, contenedor){
     const pdf = await pdfjsLib.getDocument(origen).promise;
     contenedor.innerHTML = '';
     const anchoDisponible = contenedor.clientWidth || 300;
+    // Se dibuja a la resolución real de la pantalla (devicePixelRatio), no a
+    // la resolución "CSS" — si no, en pantallas de alta densidad (la mayoría
+    // de celulares) se ve borroso porque el navegador estira la imagen.
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
     for(let n = 1; n <= pdf.numPages; n++){
       const pagina = await pdf.getPage(n);
-      const escala = anchoDisponible / pagina.getViewport({ scale:1 }).width;
-      const viewport = pagina.getViewport({ scale: Math.max(escala, 0.5) });
+      const escalaVisual = Math.max(anchoDisponible / pagina.getViewport({ scale:1 }).width, 0.5);
+      const viewportVisual = pagina.getViewport({ scale: escalaVisual });
+      const viewportRender = pagina.getViewport({ scale: escalaVisual * dpr });
       const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      canvas.style.cssText = 'width:100%; display:block; margin-bottom:8px; border-radius:var(--radius-sm); border:1px solid var(--line-soft);';
+      canvas.width = viewportRender.width;
+      canvas.height = viewportRender.height;
+      canvas.style.cssText = `width:${viewportVisual.width}px; height:${viewportVisual.height}px; display:block; margin-bottom:8px; border-radius:var(--radius-sm); border:1px solid var(--line-soft);`;
       contenedor.appendChild(canvas);
-      await pagina.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      await pagina.render({ canvasContext: canvas.getContext('2d'), viewport: viewportRender }).promise;
     }
   } catch(e){
     contenedor.innerHTML = '<span class="hint">No se pudo mostrar la vista previa aquí. Usa «Abrir»/«Descargar» para verlo.</span>';
